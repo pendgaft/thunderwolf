@@ -1,0 +1,16 @@
+
+TODO - IP counts for networks need to be held somewhere
+	//TODO this needs to be linked in at a higher lvl
+	private static void parseIPScoreFile(HashMap<Integer, AS> asMap) throws IOException{
+		BufferedReader fBuff = new BufferedReader(new FileReader(ASTopoParser.AS_IP_FILE));
+		Pattern fuckYouJava = Pattern.compile("(\\d+),(\\d+)");
+		while(fBuff.ready()){
+			String pollString = fBuff.readLine();
+			Matcher tMatch = fuckYouJava.matcher(pollString);
+			tMatch.find();
+			int tAS = Integer.parseInt(tMatch.group(1));
+			int score = Integer.parseInt(tMatch.group(2));
+			//asMap.get(tAS).setIPCount(score);
+		}
+		fBuff.close();
+	}
