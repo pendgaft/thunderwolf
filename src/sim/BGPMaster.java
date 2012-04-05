@@ -14,20 +14,20 @@ public class BGPMaster {
 	private Semaphore workSem;
 	private Semaphore completeSem;
 	private Queue<Set<AS>> workQueue;
+	
+	private long currentStep;
 
 	private static final int NUM_THREADS = 8;
 	private static final int WORK_BLOCK_SIZE = 40;
 
 	@SuppressWarnings("unchecked")
-	public static HashMap<Integer, AS>[] buildBGPConnection(
-			int chinaAvoidanceSize) throws IOException {
+	public static HashMap<Integer, AS>[] buildBGPConnection() throws IOException {
 
 		/*
 		 * Build AS map
 		 */
 		HashMap<Integer, AS> usefulASMap = ASTopoParser.doNetworkBuild();
-		HashMap<Integer, AS> prunedASMap = ASTopoParser
-				.doNetworkPrune(usefulASMap);
+		HashMap<Integer, AS> prunedASMap = ASTopoParser.doNetworkPrune(usefulASMap);
 
 		/*
 		 * Give everyone their self network
@@ -78,7 +78,6 @@ public class BGPMaster {
 		long bgpStartTime = System.currentTimeMillis();
 		System.out.println("Starting up the BGP processing.");
 
-		int stepCounter = 0;
 		boolean stuffToDo = true;
 		boolean skipToMRAI = false;
 		while (stuffToDo) {
@@ -136,8 +135,7 @@ public class BGPMaster {
 		}
 
 		bgpStartTime = System.currentTimeMillis() - bgpStartTime;
-		System.out.println("BGP done, this took: " + (bgpStartTime / 60000)
-				+ " minutes.");
+		System.out.println("BGP done, this took: " + (bgpStartTime / 60000) + " minutes.");
 
 		BGPMaster.verifyConnected(usefulASMap);
 
@@ -153,6 +151,7 @@ public class BGPMaster {
 		this.workSem = new Semaphore(0);
 		this.completeSem = new Semaphore(0);
 		this.workQueue = new LinkedBlockingQueue<Set<AS>>();
+		this.currentStep = 0;
 	}
 
 	public void addWork(Set<AS> workSet) {
@@ -197,8 +196,7 @@ public class BGPMaster {
 
 		startTime = System.currentTimeMillis() - startTime;
 		System.out.println("Verification done in: " + startTime);
-		System.out.println("Paths exist for " + workingPaths + " of "
-				+ examinedPaths + " possible ("
+		System.out.println("Paths exist for " + workingPaths + " of " + examinedPaths + " possible ("
 				+ (workingPaths / examinedPaths * 100.0) + "%)");
 	}
 
