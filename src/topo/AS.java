@@ -1,7 +1,6 @@
 package topo;
 
 import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
 
 /*
  * Notes to turn into docs
@@ -25,7 +24,8 @@ public class AS {
 	private HashMap<Integer, BGPPath> locRib;
 	private HashSet<Integer> dirtyDest;
 
-	private Queue<BGPUpdate> incUpdateQueue;
+	private HashMap<Integer, BGPUpdateQueue> incUpdates;
+	private long furthestCPUReady;
 
 	public static final int PROIVDER_CODE = -1;
 	public static final int PEER_CODE = 0;
@@ -42,19 +42,31 @@ public class AS {
 		this.adjOutRib = new HashMap<Integer, Set<AS>>();
 		this.locRib = new HashMap<Integer, BGPPath>();
 
-		this.incUpdateQueue = new LinkedBlockingQueue<BGPUpdate>();
+		//TODO do we need to add an "administrative" (i.e. simulator) AS 0 queue?
+		this.incUpdates = new HashMap<Integer, BGPUpdateQueue>();
+		this.furthestCPUReady = -1;
 		this.dirtyDest = new HashSet<Integer>();
 	}
-	
-	public static HashSet<Integer> buildASNSet(HashSet<AS> asSet){
+
+	public static HashSet<Integer> buildASNSet(HashSet<AS> asSet) {
 		HashSet<Integer> outSet = new HashSet<Integer>();
-		for(AS tAS: asSet){
+		for (AS tAS : asSet) {
 			outSet.add(tAS.getASN());
 		}
 		return outSet;
 	}
 
 	public void addRelation(AS otherAS, int myRelationToThem) {
+		/*
+		 * Generate update queues
+		 */
+		if (!this.incUpdates.containsKey(otherAS.getASN())) {
+			this.incUpdates.put(otherAS.getASN(), new BGPUpdateQueue());
+		}
+		if (!otherAS.incUpdates.containsKey(this.getASN())) {
+			otherAS.incUpdates.put(this.getASN(), new BGPUpdateQueue());
+		}
+
 		if (myRelationToThem == AS.PROIVDER_CODE) {
 			this.customers.add(otherAS);
 			otherAS.providers.add(this);
@@ -87,8 +99,62 @@ public class AS {
 		}
 	}
 
-	public void handleAdvertisement() {
-		BGPUpdate nextUpdate = this.incUpdateQueue.poll();
+	/*
+	 * ASSUMPTION: this code pops each time a SINGLE queue is ready to go
+	 */
+	//XXX we can get multiple "done" events for the same time (issue?  fix?)
+	//XXX do above via a "schedule" (next scheduled?) var?
+	public long tendQueues(long currentTime) {
+		/*
+		 * Step 1) advance queues, deal w/ finished items
+		 */
+		double cpuSplit = this.processorEvenSplit();
+		for (BGPUpdateQueue tQueue : this.incUpdates.values()) {
+			if (tQueue.advanceTime(currentTime, cpuSplit)) {
+				this.handleAdvertisement(tQueue);
+			}
+		}
+		
+		/*
+		 * Step 2) estimate next ttc
+		 */
+		cpuSplit = this.processorEvenSplit();
+		long soonest = Long.MAX_VALUE;
+		for(int tASN: this.incUpdates.keySet()){
+			soonest = Math.min(soonest, this.incUpdates.get(tASN).getTTC(cpuSplit));
+		}
+		
+		return soonest;
+	}
+	
+	//TODO odd way to do this scheduling, but yeah
+	public long getFurthestCPUReadyTime(){
+		return this.furthestCPUReady;
+	}
+	public void updateCPUReadyTime(long newTime){
+		this.furthestCPUReady = newTime;
+	}
+	
+	/**
+	 * Computes the fraction of the CPU each queue is getting assuming even split
+	 */
+	private double processorEvenSplit(){
+		double running = 0.0;
+		for(BGPUpdateQueue tQueue: this.incUpdates.values()){
+			if(tQueue.isRunning()){
+				running += 1.0;
+			}
+		}
+		
+		if(running != 0.0){
+			return 1.0 / running;
+		}
+		
+		return 1.0;
+	}
+
+	private void handleAdvertisement(BGPUpdateQueue poppedQueue) {
+		BGPUpdate nextUpdate = poppedQueue.getPoppedUpdate();
 		if (nextUpdate == null) {
 			return;
 		}
@@ -155,33 +221,56 @@ public class AS {
 		recalcBestPath(dest);
 	}
 
-	public void mraiExpire() {
+	//TODO this needs to be CPU time liminted, but for now, go nuts (works but unrealistic)
+	public void mraiExpire(long currentTime) {
 		for (int tDest : this.dirtyDest) {
-			this.sendUpdate(tDest);
+			this.sendUpdate(tDest, currentTime);
 		}
 		this.dirtyDest.clear();
 	}
 
-	public void advPath(BGPPath incPath) {
-		this.incUpdateQueue.add(new BGPUpdate(incPath));
+	//TODO this is a little inefficent, a saner refactoring of tend queues would remove duplicate comps
+	public void spinUp(long currentTime) {
+		/*
+		 * Update queues to this point in time
+		 */
+		this.tendQueues(currentTime);
+		
+		/*
+		 * "switch on" queues
+		 */
+		for(BGPUpdateQueue tQueue: this.incUpdates.values()){
+			tQueue.switchOn(currentTime);
+		}
+		
+		/*
+		 * Compute new TTC, add said event to event queue
+		 */
+		long nextTTC = this.tendQueues(currentTime);
+		//TODO launch next event
 	}
 
-	public void withdrawPath(AS peer, int dest) {
-		this.incUpdateQueue.add(new BGPUpdate(dest, peer));
+	public void advPath(BGPPath incPath, long currentTime) {
+		if (this.incUpdates.get(incPath.getNextHop()).addUpdate(new BGPUpdate(incPath))) {
+			this.spinUp(currentTime);
+		}
 	}
 
-	public boolean hasWorkToDo() {
-		return !this.incUpdateQueue.isEmpty();
+	public void withdrawPath(AS peer, int dest, long currentTime) {
+		if (this.incUpdates.get(peer.getASN()).addUpdate(new BGPUpdate(dest, peer))) {
+			this.spinUp(currentTime);
+		}
 	}
 
 	public boolean hasDirtyPrefixes() {
 		return !this.dirtyDest.isEmpty();
 	}
 
-	public long getPendingMessageCount() {
-		return (long) this.incUpdateQueue.size();
-	}
-
+	/**
+	 * Calculates the best path to a given destination
+	 * 
+	 * @param dest
+	 */
 	private void recalcBestPath(int dest) {
 		boolean changed;
 
@@ -234,7 +323,7 @@ public class AS {
 		return currentBest;
 	}
 
-	private void sendUpdate(int dest) {
+	private void sendUpdate(int dest, long currentTime) {
 		Set<AS> prevAdvedTo = this.adjOutRib.get(dest);
 		Set<AS> newAdvTo = new HashSet<AS>();
 		BGPPath pathOfMerit = this.locRib.get(dest);
@@ -243,16 +332,16 @@ public class AS {
 			BGPPath pathToAdv = pathOfMerit.deepCopy();
 			pathToAdv.appendASToPath(this.asn);
 			for (AS tCust : this.customers) {
-				tCust.advPath(pathToAdv);
+				tCust.advPath(pathToAdv, currentTime);
 				newAdvTo.add(tCust);
 			}
 			if (pathOfMerit.getDest() == this.asn || (this.getRel(pathOfMerit.getNextHop()) == 1)) {
 				for (AS tPeer : this.peers) {
-					tPeer.advPath(pathToAdv);
+					tPeer.advPath(pathToAdv, currentTime);
 					newAdvTo.add(tPeer);
 				}
 				for (AS tProv : this.providers) {
-					tProv.advPath(pathToAdv);
+					tProv.advPath(pathToAdv, currentTime);
 					newAdvTo.add(tProv);
 				}
 			}
@@ -261,7 +350,7 @@ public class AS {
 		if (prevAdvedTo != null) {
 			prevAdvedTo.removeAll(newAdvTo);
 			for (AS tAS : prevAdvedTo) {
-				tAS.withdrawPath(this, dest);
+				tAS.withdrawPath(this, dest, currentTime);
 			}
 		}
 	}

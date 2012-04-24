@@ -1,14 +1,15 @@
 package sim;
 
-import java.util.Set;
-import topo.AS;
+import events.BGPEvent;
 
 public class BGPSlave implements Runnable {
 
 	private BGPMaster workSource;
+	private int id;
 
-	public BGPSlave(BGPMaster daBoss) {
+	public BGPSlave(BGPMaster daBoss, int myID) {
 		this.workSource = daBoss;
+		this.id = myID;
 	}
 
 	@Override
@@ -19,16 +20,17 @@ public class BGPSlave implements Runnable {
 				/*
 				 * Fetch work from master
 				 */
-				Set<AS> workSet = this.workSource.getWork();
+				BGPEvent event = this.workSource.getWork(this.id);
 
 				/*
 				 * there is work to do, please do it
 				 */
-				for (AS tAS : workSet) {
-					tAS.handleAdvertisement();
-				}
+				event.runEvent();
 				
-				this.workSource.reportWorkDone();
+				/*
+				 * Report work done, needed for bookkeeping
+				 */
+				this.workSource.reportWorkDone(event);
 			}
 		} catch (InterruptedException e) {
 			/*
@@ -37,5 +39,4 @@ public class BGPSlave implements Runnable {
 		}
 
 	}
-
 }
