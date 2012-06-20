@@ -4,6 +4,7 @@ import java.util.*;
 
 import threading.BGPMaster;
 import events.ProcessEvent;
+import events.MRAIFireEvent;
 import bgp.BGPRoute;
 import bgp.BGPUpdate;
 
@@ -24,6 +25,7 @@ public class BGPSpeaker {
 	private HashMap<Integer, List<BGPRoute>> inRib;
 	private HashMap<Integer, Set<BGPSpeaker>> adjOutRib;
 	private HashMap<Integer, BGPRoute> locRib;
+
 	private HashSet<Integer> dirtyDest;
 
 	private HashMap<Integer, Queue<BGPUpdate>> incUpdateQueues;
@@ -31,6 +33,8 @@ public class BGPSpeaker {
 	private ProcessEvent currentProcessEvent;
 
 	private BGPMaster simMaster;
+
+	private static boolean DEBUG = false;
 
 	/**
 	 * Constructor which sets up a BGP speaker.
@@ -85,6 +89,10 @@ public class BGPSpeaker {
 	 */
 	private void handleAdvertisement(Queue<BGPUpdate> queueToRun) {
 		BGPUpdate nextUpdate = queueToRun.poll();
+
+		if (DEBUG) {
+			System.out.println("handling " + this.getASN());
+		}
 
 		/*
 		 * No work? Go to sleep.
@@ -160,10 +168,20 @@ public class BGPSpeaker {
 	 * MRAI timer, resulting in updates being sent to this router's peers.
 	 */
 	public void mraiExpire(long currentTime) {
-		for (int tDest : this.dirtyDest) {
-			this.sendUpdate(tDest, currentTime);
+
+		synchronized (this.dirtyDest) {
+			for (int tDest : this.dirtyDest) {
+				this.sendUpdate(tDest, currentTime);
+			}
+			this.dirtyDest.clear();
 		}
-		this.dirtyDest.clear();
+
+		if (DEBUG) {
+			System.out.println("MRAI fire at " + this.getASN());
+		}
+
+		// TODO configure this somehow in the future (mrai)
+		this.simMaster.addWork(new MRAIFireEvent(currentTime + 30000, this));
 	}
 
 	/**
@@ -173,7 +191,7 @@ public class BGPSpeaker {
 	 * @param incRoute
 	 *            - the route being advertised
 	 */
-	public void advPath(BGPRoute incRoute, long currentTime) {
+	public synchronized void advPath(BGPRoute incRoute, long currentTime) {
 		boolean spinningUpQueue = false;
 
 		if (this.incUpdateQueues.get(incRoute.getNextHop()).isEmpty()) {
@@ -181,8 +199,8 @@ public class BGPSpeaker {
 			spinningUpQueue = true;
 		}
 		this.incUpdateQueues.get(incRoute.getNextHop()).add(
-				BGPUpdate.buildAdvertisement(incRoute, this
-						.calcTotalRuntime(incRoute.getSize())));
+				BGPUpdate.buildAdvertisement(incRoute,
+						this.calcTotalRuntime(incRoute.getSize())));
 
 		/*
 		 * So if we're spinning up a queue (adding work to an empty queue), then
@@ -202,7 +220,8 @@ public class BGPSpeaker {
 	 * @param dest
 	 *            - the destination of the route withdrawn
 	 */
-	public void withdrawPath(int withdrawingAS, int dest, long currentTime) {
+	public synchronized void withdrawPath(int withdrawingAS, int dest,
+			long currentTime) {
 		boolean spinningUpQueue = false;
 
 		if (this.incUpdateQueues.get(withdrawingAS).isEmpty()) {
@@ -210,7 +229,11 @@ public class BGPSpeaker {
 			spinningUpQueue = true;
 		}
 		this.incUpdateQueues.get(withdrawingAS).add(
-				BGPUpdate.buildWithdrawal(dest, withdrawingAS, this.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest).getSize())));
+				BGPUpdate.buildWithdrawal(
+						dest,
+						withdrawingAS,
+						this.calcTotalRuntime(this.adjInRib.get(withdrawingAS)
+								.get(dest).getSize())));
 
 		/*
 		 * So if we're spinning up a queue (adding work to an empty queue), then
@@ -227,7 +250,7 @@ public class BGPSpeaker {
 	 * 
 	 * @param currentTime
 	 */
-	public void fireProcessTimer(long currentTime) {
+	public synchronized void fireProcessTimer(long currentTime) {
 		this.updateRuntimes(currentTime);
 		this.reschedule();
 	}
@@ -292,6 +315,13 @@ public class BGPSpeaker {
 		}
 
 		/*
+		 * Short circuit to bail out if we've got no work
+		 */
+		if (runningCount == 0) {
+			return;
+		}
+
+		/*
 		 * Step through the non-empty queues looking for the one that is going
 		 * to finish the quickest
 		 */
@@ -301,17 +331,11 @@ public class BGPSpeaker {
 				continue;
 			}
 
-			nextTime = Math.min(nextTime, tQueue.peek().estTimeToComplete(
-					runningCount));
+			nextTime = Math.min(nextTime,
+					tQueue.peek().estTimeToComplete(runningCount));
 		}
 
-		/*
-		 * there is nothing processing, don't schedule
-		 */
-		if (nextTime == Long.MAX_VALUE) {
-			this.currentProcessEvent = null;
-			return;
-		}
+		nextTime += this.lastUpdateTime;
 
 		/*
 		 * If there isn't an event scheduled, push a new one in, if the time is
@@ -326,17 +350,6 @@ public class BGPSpeaker {
 			this.simMaster.swapWork(this.currentProcessEvent, newEvent);
 			this.currentProcessEvent = newEvent;
 		}
-	}
-
-	/**
-	 * Predicate to test if this speaker needs to send advertisements when the
-	 * MRAI fires.
-	 * 
-	 * @return - true if there are advertisements that need to be send, false
-	 *         otherwise
-	 */
-	public boolean hasDirtyPrefixes() {
-		return !this.dirtyDest.isEmpty();
 	}
 
 	/**
@@ -362,7 +375,9 @@ public class BGPSpeaker {
 		 * If we have a new path, mark that we have a dirty destination
 		 */
 		if (changed) {
-			this.dirtyDest.add(dest);
+			synchronized (this.dirtyDest) {
+				this.dirtyDest.add(dest);
+			}
 		}
 	}
 
@@ -512,9 +527,26 @@ public class BGPSpeaker {
 	 * 
 	 * @return
 	 */
-	//TODO implement this
-	public String printBGPString() {
-		return null;
+	// TODO str builder?
+	public String printBGPString(boolean detailed) {
+		String outStr = this.toString();
+
+		outStr += "\nLocal RIB is:";
+		for (BGPRoute tRoute : this.locRib.values()) {
+			outStr += "\n" + tRoute.toString();
+		}
+
+		if (detailed) {
+			outStr += "\nIN RIB is:";
+			for (int tDest : this.inRib.keySet()) {
+				outStr += "\n  dest: " + tDest;
+				for (BGPRoute tRoute : this.inRib.get(tDest)) {
+					outStr += "\n" + tRoute.toString();
+				}
+			}
+		}
+
+		return outStr;
 	}
 
 	/**
@@ -524,5 +556,44 @@ public class BGPSpeaker {
 	 */
 	public int getASN() {
 		return this.myAS.getASN();
+	}
+
+	/**
+	 * Computes the total memory load of this BGP speaker.
+	 * 
+	 * @return - the memory consumed by this BGP speaker's in RIB in bytes
+	 */
+	public long memLoad() {
+		long memCount = 0;
+
+		for (int tDest : this.inRib.keySet()) {
+			for (BGPRoute tRoute : this.inRib.get(tDest)) {
+				memCount += tRoute.getPathLength() * 20 * tRoute.getSize();
+			}
+		}
+
+		return memCount;
+	}
+
+	public int calcTotalRouteCount() {
+		int routeCount = 0;
+
+		for (int tDest : this.inRib.keySet()) {
+			for (BGPRoute tRoute : this.inRib.get(tDest)) {
+				routeCount += tRoute.getSize();
+			}
+		}
+
+		return routeCount;
+	}
+
+	public int calcDistinctDestCount() {
+		int routeCount = 0;
+
+		for (BGPRoute tRoute : this.locRib.values()) {
+			routeCount += tRoute.getSize();
+		}
+
+		return routeCount;
 	}
 }

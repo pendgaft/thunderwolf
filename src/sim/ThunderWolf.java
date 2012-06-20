@@ -5,6 +5,7 @@ import java.io.*;
 
 import router.BGPSpeaker;
 import router.ASTopoParser;
+import threading.BGPMaster;
 
 public class ThunderWolf {
 
@@ -21,7 +22,8 @@ public class ThunderWolf {
 		start = System.currentTimeMillis();
 		HashMap<Integer, BGPSpeaker> routerMap = ASTopoParser.doNetworkBuild();
 		end = System.currentTimeMillis();
-		System.out.println("Topology created in: " + (end - start) / 1000 + " seconds.\n");
+		System.out.println("Topology created in: " + (end - start) / 1000
+				+ " seconds.\n");
 
 		/*
 		 * Debug, dump topo info
@@ -30,6 +32,17 @@ public class ThunderWolf {
 			System.out.println("Topo size is: " + routerMap.size());
 			for (BGPSpeaker tRouter : routerMap.values()) {
 				System.out.println(tRouter.printDebugString());
+			}
+		}
+
+		System.out.println("Firing Sim Trigger");
+		BGPMaster.driveSim(routerMap);
+
+		if (DEBUG) {
+			System.out
+					.println("Tables look like..........\n*******************");
+			for (BGPSpeaker tRouter : routerMap.values()) {
+				System.out.println(tRouter.printBGPString(true));
 			}
 		}
 	}

@@ -6,18 +6,26 @@ import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 
 import bgp.BGPRoute;
-import events.SimEvent;
+import events.*;
 import router.BGPSpeaker;
 
-public class BGPMaster {
+public class BGPMaster implements Runnable {
 
+	private int workOut;
 	private Semaphore workSem;
 	private Semaphore completeSem;
 
 	private ReentrantLock workQueueLock;
 	private PriorityQueue<SimEvent> workQueue;
 
-	private static final int NUM_THREADS = 8;
+	private ConcurrentLinkedQueue<SimEvent> readyToRunQueue;
+
+	private static final int NUM_THREADS = 2;
+	
+	private static final long GOAL_TIME = 600000;
+
+	// TODO sanity check that we're not "time warping" or does that even make
+	// sense w/ good run ahead?
 
 	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo)
 			throws IOException {
@@ -31,7 +39,6 @@ public class BGPMaster {
 			slaveThreads.add(new Thread(new ThreadWorker(self)));
 		}
 
-
 		/*
 		 * Give each BGP speaker a reference to the BGPMaster object (needed to
 		 * hand events to the sim)
@@ -41,92 +48,73 @@ public class BGPMaster {
 		}
 
 		/*
-		 * Give everyone their self network
+		 * Give everyone their self network, this will trigger events being
+		 * placed into the sim queue for CPU finished
 		 */
 		for (BGPSpeaker tAS : routingTopo.values()) {
-			//TODO this size needs to be configured
-			tAS.advPath(new BGPRoute(tAS.getASN(), 1));
+			// TODO this size needs to be configured
+			tAS.advPath(new BGPRoute(tAS.getASN(), 1), 1);
 		}
-		
+
+		/*
+		 * We need the initial MRAI fire events in here
+		 */
+		for (BGPSpeaker tAS : routingTopo.values()) {
+			// TODO add jitter plox
+			self.addWork(new MRAIFireEvent(30000, tAS));
+		}
+
 		/*
 		 * Spin the slaves up
 		 */
-		long bgpStartTime = System.currentTimeMillis();
-		System.out.println("Starting up the BGP processing.");
 		for (Thread tThread : slaveThreads) {
 			tThread.setDaemon(true);
 			tThread.start();
 		}
 
-		//XXX here down is the old event pumps
-		int stepCounter = 0;
-		boolean stuffToDo = true;
-		boolean skipToMRAI = false;
-		while (stuffToDo) {
-			stuffToDo = false;
-			return this.workQueue.poll();
+		Thread masterThread = new Thread(self);
+		masterThread.start();
+		try {
+			masterThread.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
 
-			/*
-			 * dole out work to slaves
-			 */
-			for (Set<AS> tempBlock : asBlocks) {
-				self.addWork(tempBlock);
-			}
+	public BGPMaster() {
+		this.workOut = 0;
+		this.workSem = new Semaphore(0);
+		this.completeSem = new Semaphore(0);
+		this.workQueueLock = new ReentrantLock(true);
+		this.workQueue = new PriorityQueue<SimEvent>();
+		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
+	}
 
-			/*
-			 * Wait till this round is done
-			 */
+	public void run() {
+		boolean stillRunning = true;
+		long bgpStartTime = System.currentTimeMillis();
+		System.out.println("Starting up the BGP processing.");
+
+		while (stillRunning) {
+			this.spinUpWork();
+			
 			try {
-				self.wall();
+				this.wall();
 			} catch (InterruptedException e) {
 				e.printStackTrace();
-				System.exit(-2);
 			}
-
-			/*
-			 * check if nodes still have stuff to do
-			 */
-			for (AS tAS : usefulASMap.values()) {
-				if (tAS.hasWorkToDo()) {
-					stuffToDo = true;
-				}
-				if (tAS.hasDirtyPrefixes()) {
-					skipToMRAI = true;
-				}
+			
+			this.workQueueLock.lock();
+			if(this.workQueue.peek().getEventTime() >= BGPMaster.GOAL_TIME){
+				stillRunning = false;
 			}
-
-			/*
-			 * If we have no pending BGP messages, release all pending updates,
-			 * this is slightly different from a normal MRAI, but it gets the
-			 * point
-			 */
-			if (!stuffToDo && skipToMRAI) {
-				for (AS tAS : usefulASMap.values()) {
-					tAS.mraiExpire();
-				}
-				skipToMRAI = false;
-				stuffToDo = true;
-			}
-
-			/*
-			 * A tiny bit of logging
-			 */
-			//			stepCounter++;
-			//			if (stepCounter % 1000 == 0) {
-			//				System.out.println("" + (stepCounter / 1000) + " (1k msgs)");
-			//			}
+			this.workQueueLock.unlock();
 		}
 
 		bgpStartTime = System.currentTimeMillis() - bgpStartTime;
 		System.out.println("BGP done, this took: " + (bgpStartTime / 60000)
 				+ " minutes.");
-	}
 
-	public BGPMaster() {
-		this.workSem = new Semaphore(0);
-		this.completeSem = new Semaphore(0);
-		this.workQueueLock = new ReentrantLock(true);
-		this.workQueue = new PriorityQueue<SimEvent>();
 	}
 
 	/**
@@ -157,15 +145,35 @@ public class BGPMaster {
 
 	public SimEvent getWork() throws InterruptedException {
 		this.workSem.acquire();
-		return this.workQueue.poll();
+		return this.readyToRunQueue.poll();
 	}
 
 	public void reportWorkDone() {
 		this.completeSem.release();
 	}
 
+	// TODO this has no runahead at this point...
+	private void spinUpWork() {
+
+		this.workQueueLock.lock();
+		long nextTime = this.workQueue.peek().getEventTime();
+		this.workOut = 0;
+
+		//System.out.println("time " + nextTime);
+		
+		while (!this.workQueue.isEmpty() && this.workQueue.peek().getEventTime() == nextTime) {
+			this.readyToRunQueue.add(this.workQueue.poll());
+			this.workSem.release();
+			this.workOut++;
+		}
+
+		this.workQueueLock.unlock();
+		
+		//System.out.println("events " + workOut);
+	}
+
 	public void wall() throws InterruptedException {
-		for (int counter = 0; counter < this.blockCount; counter++) {
+		for (int counter = 0; counter < this.workOut; counter++) {
 			this.completeSem.acquire();
 		}
 	}

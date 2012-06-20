@@ -148,14 +148,12 @@ public class BGPUpdate {
 	
 	public boolean runTimeAhead(long time, int numberRunning){
 		long fractionOfTime = (long)Math.ceil(time / numberRunning);
-		
 		this.completedRuntime += fractionOfTime;
 		return this.completedRuntime - this.totalRuntime >= 0;
 	}
 	
 	public long estTimeToComplete(int numberRunning){
 		long timeLeft = this.totalRuntime - this.completedRuntime;
-		
 		return timeLeft * numberRunning;
 	}
 }
