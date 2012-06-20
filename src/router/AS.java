@@ -23,12 +23,12 @@ public class AS {
 	 * constant for provider relationship (i.e. the other AS is a provider)
 	 */
 	public static final int PROIVDER_CODE = -1;
-	
+
 	/**
 	 * constant for peer relationship
 	 */
 	public static final int PEER_CODE = 0;
-	
+
 	/**
 	 * constant for customer relationship (i.e. the other AS is a customer)
 	 */
@@ -64,7 +64,8 @@ public class AS {
 		} else if (myRelationToThem == 3) {
 			// ignore - comes from sib relationship in the file
 		} else {
-			throw new BGPException("Bad relation passed to add relation: " + myRelationToThem);
+			throw new BGPException("Bad relation passed to add relation: "
+					+ myRelationToThem);
 		}
 	}
 
@@ -96,6 +97,21 @@ public class AS {
 	}
 
 	/**
+	 * Getter for the ASNs of all customers, peers, and providers.
+	 * 
+	 * @return
+	 */
+	public Set<Integer> getNeighbors() {
+		Set<Integer> retSet = new HashSet<Integer>();
+
+		retSet.addAll(this.getCustomers());
+		retSet.addAll(this.getPeers());
+		retSet.addAll(this.getProviders());
+
+		return retSet;
+	}
+
+	/**
 	 * Getter for the ASN of the AS
 	 * 
 	 * @return - the ASN
@@ -103,13 +119,13 @@ public class AS {
 	public int getASN() {
 		return this.asn;
 	}
-	
+
 	/**
 	 * Getter for the number of CIDRs this AS has.
 	 * 
 	 * @return - the number of CIDRs this AS originates
 	 */
-	public int getCIDRSize(){
+	public int getCIDRSize() {
 		return this.numberOfCIDRs;
 	}
 
@@ -137,27 +153,30 @@ public class AS {
 			return 2;
 		}
 
-		throw new BGPException("Asked for relation on non-adj/non-self asn!  Me: " + this.asn + " Them: " + asn);
+		throw new BGPException(
+				"Asked for relation on non-adj/non-self asn!  Me: " + this.asn
+						+ " Them: " + asn);
 	}
-	
+
 	/**
 	 * compact toString, spits out asn, for more detail go to printDebugString()
 	 */
-	public String toString(){
+	public String toString() {
 		return "ASN " + this.asn;
 	}
-	
+
 	/**
 	 * Dumps out full relationship data
 	 * 
 	 * @return - asn, size, and all relationships as a string
 	 */
-	public String printDebugString(){
-		String outStr = "AS: " + this.asn + " (size : " + this.numberOfCIDRs + ")\n";
+	public String printDebugString() {
+		String outStr = "AS: " + this.asn + " (size : " + this.numberOfCIDRs
+				+ ")\n";
 		outStr += "Customers: " + this.customers + "\n";
 		outStr += "Providers: " + this.providers + "\n";
 		outStr += "Peers: " + this.peers + "\n";
-		
+
 		return outStr;
 	}
 }

@@ -30,6 +30,9 @@ public class BGPUpdate {
 	 * The Route being advertised if this is NOT an explicit withdrawal message
 	 */
 	private BGPRoute advRoute;
+	
+	private long completedRuntime;
+	private long totalRuntime;
 
 	/**
 	 * Static method to create an advertisement update, used when a viable path
@@ -40,8 +43,8 @@ public class BGPUpdate {
 	 *            withdrawal).
 	 * @return - the update object that represents this
 	 */
-	public static BGPUpdate buildAdvertisement(BGPRoute advRoute) {
-		return new BGPUpdate(advRoute);
+	public static BGPUpdate buildAdvertisement(BGPRoute advRoute, long runtime) {
+		return new BGPUpdate(advRoute, runtime);
 	}
 
 	/**
@@ -53,8 +56,8 @@ public class BGPUpdate {
 	 *            - our (the withdrawaler)'s ASN
 	 * @return - the update object that represents this
 	 */
-	public static BGPUpdate buildWithdrawal(int withDest, int updateSrc) {
-		return new BGPUpdate(withDest, updateSrc);
+	public static BGPUpdate buildWithdrawal(int withDest, int updateSrc, long runtime) {
+		return new BGPUpdate(withDest, updateSrc, runtime);
 	}
 
 	/**
@@ -63,9 +66,10 @@ public class BGPUpdate {
 	 * @param path
 	 *            - the path we're advertising
 	 */
-	private BGPUpdate(BGPRoute path) {
+	private BGPUpdate(BGPRoute path, long runtime) {
 		this.advRoute = path;
 		this.withdrawal = false;
+		this.totalRuntime = runtime;
 	}
 
 	/**
@@ -74,10 +78,11 @@ public class BGPUpdate {
 	 * @param withdrawalDest
 	 * @param updateSrc
 	 */
-	private BGPUpdate(int withdrawalDest, int updateSrc) {
+	private BGPUpdate(int withdrawalDest, int updateSrc, long runtime) {
 		this.withdrawalDest = withdrawalDest;
 		this.withrdawalSource = updateSrc;
 		this.withdrawal = true;
+		this.totalRuntime = runtime;
 	}
 
 	/**
@@ -139,5 +144,18 @@ public class BGPUpdate {
 		}
 
 		return this.withrdawalSource;
+	}
+	
+	public boolean runTimeAhead(long time, int numberRunning){
+		long fractionOfTime = (long)Math.ceil(time / numberRunning);
+		
+		this.completedRuntime += fractionOfTime;
+		return this.completedRuntime - this.totalRuntime >= 0;
+	}
+	
+	public long estTimeToComplete(int numberRunning){
+		long timeLeft = this.totalRuntime - this.completedRuntime;
+		
+		return timeLeft * numberRunning;
 	}
 }
