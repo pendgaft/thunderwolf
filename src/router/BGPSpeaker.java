@@ -199,8 +199,8 @@ public class BGPSpeaker {
 			spinningUpQueue = true;
 		}
 		this.incUpdateQueues.get(incRoute.getNextHop()).add(
-				BGPUpdate.buildAdvertisement(incRoute,
-						this.calcTotalRuntime(incRoute.getSize())));
+				BGPUpdate.buildAdvertisement(incRoute, this
+						.calcTotalRuntime(incRoute.getSize())));
 
 		/*
 		 * So if we're spinning up a queue (adding work to an empty queue), then
@@ -229,11 +229,9 @@ public class BGPSpeaker {
 			spinningUpQueue = true;
 		}
 		this.incUpdateQueues.get(withdrawingAS).add(
-				BGPUpdate.buildWithdrawal(
-						dest,
-						withdrawingAS,
-						this.calcTotalRuntime(this.adjInRib.get(withdrawingAS)
-								.get(dest).getSize())));
+				BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
+						.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(
+								dest).getSize())));
 
 		/*
 		 * So if we're spinning up a queue (adding work to an empty queue), then
@@ -331,8 +329,8 @@ public class BGPSpeaker {
 				continue;
 			}
 
-			nextTime = Math.min(nextTime,
-					tQueue.peek().estTimeToComplete(runningCount));
+			nextTime = Math.min(nextTime, tQueue.peek().estTimeToComplete(
+					runningCount));
 		}
 
 		nextTime += this.lastUpdateTime;
@@ -486,6 +484,22 @@ public class BGPSpeaker {
 			return new LinkedList<BGPRoute>();
 		}
 		return this.inRib.get(dest);
+	}
+
+	/**
+	 * Predicate to test if this node is done processing BGP items.
+	 * 
+	 * @return - true if our incoming update queues are empty and we have no
+	 *         dirty routes, false otherwise
+	 */
+	public boolean isDone() {
+		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			if (!tQueue.isEmpty()) {
+				return false;
+			}
+		}
+
+		return this.dirtyDest.isEmpty();
 	}
 
 	/**

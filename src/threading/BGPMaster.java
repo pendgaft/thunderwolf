@@ -1,6 +1,6 @@
 package threading;
 
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
@@ -20,31 +20,30 @@ public class BGPMaster implements Runnable {
 
 	private ConcurrentLinkedQueue<SimEvent> readyToRunQueue;
 
-	private static final int NUM_THREADS = 2;
-	
-	private static final long GOAL_TIME = 600000;
+	private HashMap<Integer, BGPSpeaker> topo;
+	private long lastEpoch;
 
-	// TODO sanity check that we're not "time warping" or does that even make
-	// sense w/ good run ahead?
+	private BufferedWriter ribOut;
+	private BufferedWriter memOut;
+	private List<Integer> asnIterList;
+
+	private static final int NUM_THREADS = 2;
+
+	private static final long EPOCH_TIME = 1000;
+
+	private static final String LOG = "logs/";
 
 	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo)
 			throws IOException {
+		Random rng = new Random();
 
 		/*
 		 * build the master and slaves
 		 */
-		BGPMaster self = new BGPMaster();
+		BGPMaster self = new BGPMaster(routingTopo);
 		List<Thread> slaveThreads = new LinkedList<Thread>();
 		for (int counter = 0; counter < BGPMaster.NUM_THREADS; counter++) {
 			slaveThreads.add(new Thread(new ThreadWorker(self)));
-		}
-
-		/*
-		 * Give each BGP speaker a reference to the BGPMaster object (needed to
-		 * hand events to the sim)
-		 */
-		for (BGPSpeaker tRouter : routingTopo.values()) {
-			tRouter.registerBGPMaster(self);
 		}
 
 		/*
@@ -60,8 +59,8 @@ public class BGPMaster implements Runnable {
 		 * We need the initial MRAI fire events in here
 		 */
 		for (BGPSpeaker tAS : routingTopo.values()) {
-			// TODO add jitter plox
-			self.addWork(new MRAIFireEvent(30000, tAS));
+			long jitter = rng.nextLong() % 30000;
+			self.addWork(new MRAIFireEvent(30000 + jitter, tAS));
 		}
 
 		/*
@@ -81,13 +80,26 @@ public class BGPMaster implements Runnable {
 		}
 	}
 
-	public BGPMaster() {
+	public BGPMaster(HashMap<Integer, BGPSpeaker> routingTopo) {
 		this.workOut = 0;
 		this.workSem = new Semaphore(0);
 		this.completeSem = new Semaphore(0);
 		this.workQueueLock = new ReentrantLock(true);
 		this.workQueue = new PriorityQueue<SimEvent>();
 		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
+		this.lastEpoch = 0;
+
+		this.topo = routingTopo;
+		/*
+		 * Give each BGP speaker a reference to the BGPMaster object (needed to
+		 * hand events to the sim)
+		 */
+		for (BGPSpeaker tRouter : this.topo.values()) {
+			tRouter.registerBGPMaster(this);
+		}
+
+		this.asnIterList = this.buildOrderedASNList();
+		this.setupStatPush();
 	}
 
 	public void run() {
@@ -97,16 +109,27 @@ public class BGPMaster implements Runnable {
 
 		while (stillRunning) {
 			this.spinUpWork();
-			
+
 			try {
 				this.wall();
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			
+
 			this.workQueueLock.lock();
-			if(this.workQueue.peek().getEventTime() >= BGPMaster.GOAL_TIME){
+			if (this.workQueue.peek().getEventTime() >= this.lastEpoch
+					+ BGPMaster.EPOCH_TIME) {
+				this.lastEpoch += BGPMaster.EPOCH_TIME;
+
+				this.statPush(this.lastEpoch);
+
 				stillRunning = false;
+				for (BGPSpeaker tRouter : this.topo.values()) {
+					if (!tRouter.isDone()) {
+						stillRunning = true;
+						break;
+					}
+				}
 			}
 			this.workQueueLock.unlock();
 		}
@@ -114,7 +137,10 @@ public class BGPMaster implements Runnable {
 		bgpStartTime = System.currentTimeMillis() - bgpStartTime;
 		System.out.println("BGP done, this took: " + (bgpStartTime / 60000)
 				+ " minutes.");
+		System.out.println("Current step is: "
+				+ this.workQueue.peek().getEventTime());
 
+		this.doneLogging();
 	}
 
 	/**
@@ -159,22 +185,81 @@ public class BGPMaster implements Runnable {
 		long nextTime = this.workQueue.peek().getEventTime();
 		this.workOut = 0;
 
-		//System.out.println("time " + nextTime);
-		
-		while (!this.workQueue.isEmpty() && this.workQueue.peek().getEventTime() == nextTime) {
+		while (!this.workQueue.isEmpty()
+				&& this.workQueue.peek().getEventTime() == nextTime) {
 			this.readyToRunQueue.add(this.workQueue.poll());
 			this.workSem.release();
 			this.workOut++;
 		}
 
 		this.workQueueLock.unlock();
-		
-		//System.out.println("events " + workOut);
 	}
 
 	public void wall() throws InterruptedException {
 		for (int counter = 0; counter < this.workOut; counter++) {
 			this.completeSem.acquire();
 		}
+	}
+
+	private void setupStatPush() {
+
+		try {
+			this.ribOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
+					+ "rib.csv"));
+			this.memOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
+					+ "mem.csv"));
+
+			for (int counter = 0; counter < this.asnIterList.size(); counter++) {
+				this.ribOut.write("," + this.asnIterList.get(counter));
+				this.memOut.write("," + this.asnIterList.get(counter));
+			}
+			this.ribOut.newLine();
+			this.memOut.newLine();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+
+	private void statPush(long currentTime) {
+		try {
+			this.ribOut.write("" + currentTime);
+			this.memOut.write("" + currentTime);
+
+			for (int counter = 0; counter < this.asnIterList.size(); counter++) {
+				this.ribOut.write(","
+						+ this.topo.get(this.asnIterList.get(counter))
+								.calcTotalRouteCount());
+				this.memOut.write(","
+						+ this.topo.get(this.asnIterList.get(counter))
+								.memLoad());
+			}
+
+			this.ribOut.newLine();
+			this.memOut.newLine();
+
+			this.ribOut.flush();
+			this.memOut.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+
+	private void doneLogging() {
+		try {
+			this.ribOut.close();
+			this.memOut.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+
+	private List<Integer> buildOrderedASNList() {
+		List<Integer> retList = new ArrayList<Integer>();
+		retList.addAll(this.topo.keySet());
+		Collections.sort(retList);
+		return retList;
 	}
 }
