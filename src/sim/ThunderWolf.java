@@ -9,7 +9,7 @@ import threading.BGPMaster;
 
 public class ThunderWolf {
 
-	public static final boolean DEBUG = true;
+	public static final boolean DEBUG = false;
 
 	public static void main(String[] args) throws IOException {
 
