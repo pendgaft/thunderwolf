@@ -8,6 +8,7 @@ import java.util.concurrent.locks.*;
 import bgp.BGPRoute;
 import events.*;
 import router.BGPSpeaker;
+import util.Stats;
 
 public class BGPMaster implements Runnable {
 
@@ -25,6 +26,7 @@ public class BGPMaster implements Runnable {
 
 	private BufferedWriter ribOut;
 	private BufferedWriter memOut;
+	private BufferedWriter statOut;
 	private List<Integer> asnIterList;
 
 	private static final int NUM_THREADS = 2;
@@ -205,9 +207,11 @@ public class BGPMaster implements Runnable {
 
 		try {
 			this.ribOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
-					+ "rib.csv"));
+					+ "rib-full.csv"));
 			this.memOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
-					+ "mem.csv"));
+					+ "mem-full.csv"));
+			this.statOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
+					+ "stats.csv"));
 
 			for (int counter = 0; counter < this.asnIterList.size(); counter++) {
 				this.ribOut.write("," + this.asnIterList.get(counter));
@@ -215,6 +219,8 @@ public class BGPMaster implements Runnable {
 			}
 			this.ribOut.newLine();
 			this.memOut.newLine();
+			this.statOut.write(",avg mem,med mem");
+			this.statOut.newLine();
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -222,6 +228,8 @@ public class BGPMaster implements Runnable {
 	}
 
 	private void statPush(long currentTime) {
+		List<Long> memList = new ArrayList<Long>();
+
 		try {
 			this.ribOut.write("" + currentTime);
 			this.memOut.write("" + currentTime);
@@ -230,16 +238,21 @@ public class BGPMaster implements Runnable {
 				this.ribOut.write(","
 						+ this.topo.get(this.asnIterList.get(counter))
 								.calcTotalRouteCount());
-				this.memOut.write(","
-						+ this.topo.get(this.asnIterList.get(counter))
-								.memLoad());
+				long memLoad = this.topo.get(this.asnIterList.get(counter))
+						.memLoad();
+				memList.add(memLoad);
+				this.memOut.write("," + memLoad);
 			}
 
+			this.statOut.write("" + currentTime + "," + Stats.mean(memList) + "," + Stats.median(memList) + "," + Stats.max(memList));
+			
 			this.ribOut.newLine();
 			this.memOut.newLine();
+			this.statOut.newLine();
 
 			this.ribOut.flush();
 			this.memOut.flush();
+			this.statOut.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -250,6 +263,7 @@ public class BGPMaster implements Runnable {
 		try {
 			this.ribOut.close();
 			this.memOut.close();
+			this.statOut.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);

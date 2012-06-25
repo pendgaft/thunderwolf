@@ -582,7 +582,7 @@ public class BGPSpeaker {
 
 		for (int tDest : this.inRib.keySet()) {
 			for (BGPRoute tRoute : this.inRib.get(tDest)) {
-				memCount += tRoute.getPathLength() * 20 * tRoute.getSize();
+				memCount += (tRoute.getPathLength() * 4 + 20) * tRoute.getSize();
 			}
 		}
 
