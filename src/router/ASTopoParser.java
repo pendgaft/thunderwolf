@@ -56,6 +56,7 @@ public class ASTopoParser {
 	private static HashMap<Integer, AS> parseFile(String asRelFile, String cidrCountFile) throws IOException {
 
 		HashMap<Integer, AS> retMap = new HashMap<Integer, AS>();
+		int noCIDRCount = 0;
 
 		String pollString;
 		StringTokenizer pollToks;
@@ -124,6 +125,14 @@ public class ASTopoParser {
 			 * Actually add the relation, we only need to call this for one
 			 * object and it handles symmetry enforcement
 			 */
+			if(!retMap.containsKey(lhsASN)){
+				retMap.put(lhsASN, new AS(lhsASN, 1));
+				noCIDRCount++;
+			}
+			if(!retMap.containsKey(rhsASN)){
+				retMap.put(rhsASN, new AS(rhsASN, 1));
+				noCIDRCount++;
+			}
 			retMap.get(lhsASN).addRelation(retMap.get(rhsASN), rel);
 		}
 		fBuff.close();
