@@ -137,6 +137,8 @@ public class ASTopoParser {
 		}
 		fBuff.close();
 
+		System.out.println("ASes without CIDR mapping: " + noCIDRCount);
+		
 		return retMap;
 	}
 }
