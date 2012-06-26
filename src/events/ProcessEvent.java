@@ -4,16 +4,12 @@ import router.BGPSpeaker;
 
 public class ProcessEvent extends SimEvent {
 
-	private BGPSpeaker myOwner;
-
 	public ProcessEvent(long eTime, BGPSpeaker owner) {
-		super(eTime, SimEvent.ROUTER_PROCESS);
-
-		this.myOwner = owner;
+		super(eTime, SimEvent.ROUTER_PROCESS, owner);
 	}
 
 	public void handleEvent() {
-		this.myOwner.fireProcessTimer(this.getEventTime());
+		this.getOwner().fireProcessTimer(this.getEventTime());
 	}
 
 	public boolean equals(Object rhs) {
@@ -30,6 +26,6 @@ public class ProcessEvent extends SimEvent {
 		}
 
 		return this.getEventTime() == rhsEvent.getEventTime()
-				&& this.myOwner.getASN() == rhsEvent.myOwner.getASN();
+				&& this.getOwner().getASN() == rhsEvent.getOwner().getASN();
 	}
 }

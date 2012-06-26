@@ -1,17 +1,22 @@
 package events;
 
+import router.BGPSpeaker;
+
 public abstract class SimEvent implements Comparable<SimEvent> {
 
 	private long eventTime;
 
 	private int eventType;
+	
+	private BGPSpeaker myOwner;
 
 	public static final int ROUTER_PROCESS = 1;
 	public static final int MRAI_EVENT = 2;
 
-	public SimEvent(long eTime, int eType) {
+	public SimEvent(long eTime, int eType, BGPSpeaker owner) {
 		this.eventTime = eTime;
 		this.eventType = eType;
+		this.myOwner = owner;
 	}
 
 	public abstract void handleEvent();
@@ -22,6 +27,10 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 
 	public int getEventType() {
 		return this.eventType;
+	}
+	
+	public BGPSpeaker getOwner(){
+		return this.myOwner;
 	}
 
 	public int compareTo(SimEvent rhs) {

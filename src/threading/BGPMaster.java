@@ -13,23 +13,26 @@ import util.Stats;
 public class BGPMaster implements Runnable {
 
 	private int workOut;
-	private Semaphore workSem;
+	private HashMap<Integer, Semaphore> workSem;
 	private Semaphore completeSem;
 
 	private ReentrantLock workQueueLock;
 	private PriorityQueue<SimEvent> workQueue;
 
-	private ConcurrentLinkedQueue<SimEvent> readyToRunQueue;
+	private HashMap<Integer, ConcurrentLinkedQueue<SimEvent>> readyToRunQueue;
 
 	private HashMap<Integer, BGPSpeaker> topo;
-	private long lastEpoch;
+	private HashMap<Integer, Integer> asnToSlave;
 
+	private long lastEpoch;
+	private Queue<Long> mraiQueue;
+	
 	private BufferedWriter ribOut;
 	private BufferedWriter memOut;
 	private BufferedWriter statOut;
 	private List<Integer> asnIterList;
 
-	private static final int NUM_THREADS = 2;
+	private static final int NUM_THREADS = 10;
 
 	private static final long EPOCH_TIME = 1000;
 
@@ -45,7 +48,7 @@ public class BGPMaster implements Runnable {
 		BGPMaster self = new BGPMaster(routingTopo);
 		List<Thread> slaveThreads = new LinkedList<Thread>();
 		for (int counter = 0; counter < BGPMaster.NUM_THREADS; counter++) {
-			slaveThreads.add(new Thread(new ThreadWorker(self)));
+			slaveThreads.add(new Thread(new ThreadWorker(self, counter)));
 		}
 
 		/*
@@ -63,6 +66,7 @@ public class BGPMaster implements Runnable {
 		for (BGPSpeaker tAS : routingTopo.values()) {
 			long jitter = rng.nextLong() % 30000;
 			self.addWork(new MRAIFireEvent(30000 + jitter, tAS));
+			self.mraiQueue.add(jitter + 30000);
 		}
 
 		/*
@@ -84,12 +88,13 @@ public class BGPMaster implements Runnable {
 
 	public BGPMaster(HashMap<Integer, BGPSpeaker> routingTopo) {
 		this.workOut = 0;
-		this.workSem = new Semaphore(0);
+		this.workSem = new HashMap<Integer, Semaphore>();
 		this.completeSem = new Semaphore(0);
 		this.workQueueLock = new ReentrantLock(true);
 		this.workQueue = new PriorityQueue<SimEvent>();
-		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
+		this.readyToRunQueue = new HashMap<Integer, ConcurrentLinkedQueue<SimEvent>>();
 		this.lastEpoch = 0;
+		this.mraiQueue = new PriorityQueue<Long>();
 
 		this.topo = routingTopo;
 		/*
@@ -99,7 +104,20 @@ public class BGPMaster implements Runnable {
 		for (BGPSpeaker tRouter : this.topo.values()) {
 			tRouter.registerBGPMaster(this);
 		}
+		
+		for(int counter = 0; counter < BGPMaster.NUM_THREADS; counter++){
+			this.workSem.put(counter, new Semaphore(0));
+			this.readyToRunQueue.put(counter, new ConcurrentLinkedQueue<SimEvent>());
+		}
 
+		this.asnToSlave = new HashMap<Integer, Integer>();
+		int counter = 0;
+		for(BGPSpeaker tRouter: this.topo.values()){
+			this.asnToSlave.put(tRouter.getASN(), counter);
+			counter++;
+			counter = counter % BGPMaster.NUM_THREADS;
+		}
+		
 		this.asnIterList = this.buildOrderedASNList();
 		this.setupStatPush();
 	}
@@ -155,6 +173,12 @@ public class BGPMaster implements Runnable {
 		this.workQueue.add(addedEvent);
 		this.workQueueLock.unlock();
 	}
+	
+	public void addMRAIFire(long time){
+		synchronized(this.mraiQueue){
+			this.mraiQueue.add(time);
+		}
+	}
 
 	/**
 	 * Interface used to update the time of an event.
@@ -171,29 +195,52 @@ public class BGPMaster implements Runnable {
 		this.workQueueLock.unlock();
 	}
 
-	public SimEvent getWork() throws InterruptedException {
-		this.workSem.acquire();
-		return this.readyToRunQueue.poll();
+	public SimEvent getWork(int id) throws InterruptedException {
+		this.workSem.get(id).acquire();
+		return this.readyToRunQueue.get(id).poll();
 	}
 
 	public void reportWorkDone() {
 		this.completeSem.release();
 	}
 
-	// TODO this has no runahead at this point...
 	private void spinUpWork() {
 
 		this.workQueueLock.lock();
-		long nextTime = this.workQueue.peek().getEventTime();
+		
+		/*
+		 * Run ahead to the next mrai
+		 */
+		long nextTime = this.mraiQueue.peek();
 		this.workOut = 0;
 
 		while (!this.workQueue.isEmpty()
-				&& this.workQueue.peek().getEventTime() == nextTime) {
-			this.readyToRunQueue.add(this.workQueue.poll());
-			this.workSem.release();
+				&& this.workQueue.peek().getEventTime() < nextTime) {
+			SimEvent tEvent = this.workQueue.poll();
+			this.readyToRunQueue.get(tEvent.getOwner().getASN()).add(tEvent);
+			this.workSem.get(tEvent.getOwner().getASN()).release();
 			this.workOut++;
 		}
 
+		/*
+		 * If we didn't release anything, then we're doing this "mrai" event
+		 */
+		if(this.workOut == 0){
+			while(!this.workQueue.isEmpty() && this.workQueue.peek().getEventTime() == nextTime){
+				SimEvent tEvent = this.workQueue.poll();
+				this.readyToRunQueue.get(tEvent.getOwner().getASN()).add(tEvent);
+				this.workSem.get(tEvent.getOwner().getASN()).release();
+				this.workOut++;	
+			}
+			
+			/*
+			 * remove all MRAI pops
+			 */
+			while(this.mraiQueue.peek() == nextTime){
+				this.mraiQueue.poll();
+			}
+		}
+		
 		this.workQueueLock.unlock();
 	}
 

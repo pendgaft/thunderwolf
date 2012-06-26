@@ -182,6 +182,7 @@ public class BGPSpeaker {
 
 		// TODO configure this somehow in the future (mrai)
 		this.simMaster.addWork(new MRAIFireEvent(currentTime + 30000, this));
+		this.simMaster.addMRAIFire(currentTime + 30000);
 	}
 
 	/**
