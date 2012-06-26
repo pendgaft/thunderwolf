@@ -217,8 +217,9 @@ public class BGPMaster implements Runnable {
 		while (!this.workQueue.isEmpty()
 				&& this.workQueue.peek().getEventTime() < nextTime) {
 			SimEvent tEvent = this.workQueue.poll();
-			this.readyToRunQueue.get(tEvent.getOwner().getASN()).add(tEvent);
-			this.workSem.get(tEvent.getOwner().getASN()).release();
+			int slaveid = this.asnToSlave.get(tEvent.getOwner().getASN());
+			this.readyToRunQueue.get(slaveid).add(tEvent);
+			this.workSem.get(slaveid).release();
 			this.workOut++;
 		}
 
@@ -228,8 +229,9 @@ public class BGPMaster implements Runnable {
 		if(this.workOut == 0){
 			while(!this.workQueue.isEmpty() && this.workQueue.peek().getEventTime() == nextTime){
 				SimEvent tEvent = this.workQueue.poll();
-				this.readyToRunQueue.get(tEvent.getOwner().getASN()).add(tEvent);
-				this.workSem.get(tEvent.getOwner().getASN()).release();
+				int slaveid = this.asnToSlave.get(tEvent.getOwner().getASN());
+				this.readyToRunQueue.get(slaveid).add(tEvent);
+				this.workSem.get(slaveid).release();
 				this.workOut++;	
 			}
 			
