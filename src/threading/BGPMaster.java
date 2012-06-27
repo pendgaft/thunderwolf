@@ -64,7 +64,8 @@ public class BGPMaster implements Runnable {
 		 * We need the initial MRAI fire events in here
 		 */
 		for (BGPSpeaker tAS : routingTopo.values()) {
-			long jitter = rng.nextLong() % 30000;
+		    //long jitter = rng.nextLong() % 30000;
+		    long jitter = 0;
 			self.addWork(new MRAIFireEvent(30000 + jitter, tAS));
 			self.mraiQueue.add(jitter + 30000);
 		}
@@ -238,7 +239,7 @@ public class BGPMaster implements Runnable {
 			/*
 			 * remove all MRAI pops
 			 */
-			while(this.mraiQueue.peek() == nextTime){
+			while(!this.mraiQueue.isEmpty() && this.mraiQueue.peek() == nextTime){
 				this.mraiQueue.poll();
 			}
 		}
