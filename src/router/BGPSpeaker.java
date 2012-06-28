@@ -3,7 +3,6 @@ package router;
 import java.util.*;
 
 import threading.BGPMaster;
-import events.ProcessEvent;
 import events.MRAIFireEvent;
 import bgp.BGPRoute;
 import bgp.BGPUpdate;
@@ -30,7 +29,7 @@ public class BGPSpeaker {
 
 	private HashMap<Integer, Queue<BGPUpdate>> incUpdateQueues;
 	private long lastUpdateTime;
-	private ProcessEvent currentProcessEvent;
+	private long nextMRAI;
 
 	private BGPMaster simMaster;
 
@@ -64,7 +63,7 @@ public class BGPSpeaker {
 		}
 		this.incUpdateQueues.put(this.getASN(), new LinkedList<BGPUpdate>());
 		this.lastUpdateTime = 0;
-		this.currentProcessEvent = null;
+		this.nextMRAI = 0;
 
 		this.dirtyDest = new HashSet<Integer>();
 	}
@@ -167,7 +166,7 @@ public class BGPSpeaker {
 	 * Currently exposed interface which triggers an expiration of THIS ROUTER'S
 	 * MRAI timer, resulting in updates being sent to this router's peers.
 	 */
-	public void mraiExpire(long currentTime) {
+	public synchronized void mraiExpire(long currentTime) {
 
 		synchronized (this.dirtyDest) {
 			for (int tDest : this.dirtyDest) {
@@ -181,10 +180,22 @@ public class BGPSpeaker {
 		}
 
 		// TODO configure this somehow in the future (mrai)
-		this.simMaster.addWork(new MRAIFireEvent(currentTime + 30000, this));
-		this.simMaster.addMRAIFire(currentTime + 30000);
+		this.simMaster.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
+		this.nextMRAI = currentTime + 30000;
+		
+		if (DEBUG) {
+			System.out.println("MRAI fire RETURN at " + this.getASN());
+		}
+	}
+	
+	public void setOpeningMRAI(long time){
+		this.nextMRAI = time;
 	}
 
+	public synchronized long getNextMRAI(){
+		return this.nextMRAI;
+	}
+	
 	/**
 	 * Public interface to be used by OTHER BGP Speakers to advertise a change
 	 * in a route to a destination.
@@ -192,24 +203,10 @@ public class BGPSpeaker {
 	 * @param incRoute
 	 *            - the route being advertised
 	 */
-	public synchronized void advPath(BGPRoute incRoute, long currentTime) {
-		boolean spinningUpQueue = false;
-
-		if (this.incUpdateQueues.get(incRoute.getNextHop()).isEmpty()) {
-			this.updateRuntimes(currentTime);
-			spinningUpQueue = true;
-		}
+	public void advPath(BGPRoute incRoute, long currentTime) {
 		this.incUpdateQueues.get(incRoute.getNextHop()).add(
 				BGPUpdate.buildAdvertisement(incRoute, this
 						.calcTotalRuntime(incRoute.getSize())));
-
-		/*
-		 * So if we're spinning up a queue (adding work to an empty queue), then
-		 * we'll need to adjust our scheduled time
-		 */
-		if (spinningUpQueue) {
-			this.reschedule();
-		}
 	}
 
 	/**
@@ -221,133 +218,80 @@ public class BGPSpeaker {
 	 * @param dest
 	 *            - the destination of the route withdrawn
 	 */
-	public synchronized void withdrawPath(int withdrawingAS, int dest,
+	public void withdrawPath(int withdrawingAS, int dest,
 			long currentTime) {
-		boolean spinningUpQueue = false;
-
-		if (this.incUpdateQueues.get(withdrawingAS).isEmpty()) {
-			this.updateRuntimes(currentTime);
-			spinningUpQueue = true;
-		}
 		this.incUpdateQueues.get(withdrawingAS).add(
 				BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
 						.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(
 								dest).getSize())));
-
-		/*
-		 * So if we're spinning up a queue (adding work to an empty queue), then
-		 * we'll need to adjust our scheduled time
-		 */
-		if (spinningUpQueue) {
-			this.reschedule();
-		}
-	}
-
-	/**
-	 * Public interface used by the simulator to tell the bgp speaker that one
-	 * of it's queues should be done.
-	 * 
-	 * @param currentTime
-	 */
-	public synchronized void fireProcessTimer(long currentTime) {
-		this.updateRuntimes(currentTime);
-		this.reschedule();
 	}
 
 	private long calcTotalRuntime(int size) {
 		return (long) size * 10;
 	}
 
-	/**
-	 * Internal function that handles the book-keeping with the BGP processing
-	 * queues.
-	 * 
-	 * @param currentTime
-	 * @return
-	 */
-	private int updateRuntimes(long currentTime) {
-		long timeDelta = currentTime - this.lastUpdateTime;
+	public void runForwardTo(long startTime, long stopTime) {
+
+		/*
+		 * This should never happen, make sure it does not
+		 */
+		if (startTime != this.lastUpdateTime) {
+			throw new RuntimeException("Time gap in cpu calc!");
+		}
+
+		long currentTime = startTime;
+		while (currentTime < stopTime) {
+			int activeQueues = this.countActiveQueues();
+
+			if (activeQueues == 0) {
+				currentTime = stopTime;
+				break;
+			}
+
+			long testTime = Math.min(this.computeNearestTTC(activeQueues),
+					stopTime - currentTime);
+			this.runQueuesAhead(testTime, activeQueues);
+			currentTime += testTime;
+		}
+
 		this.lastUpdateTime = currentTime;
-		int runningCount = 0;
-
-		/*
-		 * Count the number of currently running queues
-		 */
-		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
-			if (!tQueue.isEmpty()) {
-				runningCount++;
-			}
-		}
-
-		/*
-		 * Advance queues, actually do the processing if we have completed that
-		 * update
-		 */
-		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
-			if (tQueue.isEmpty()) {
-				continue;
-			}
-
-			if (tQueue.peek().runTimeAhead(timeDelta, runningCount)) {
-				this.handleAdvertisement(tQueue);
-			}
-		}
-
-		return runningCount;
 	}
 
-	/**
-	 * Internal function that handles the computation of the next queue to
-	 * finish it's current event and re-schedules us with the simulator as
-	 * needed
-	 */
-	private void reschedule() {
-		int runningCount = 0;
-
-		/*
-		 * count the number of non-empty (running) queues
-		 */
+	private int countActiveQueues() {
+		int active = 0;
 		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
 			if (!tQueue.isEmpty()) {
-				runningCount++;
+				active++;
 			}
 		}
 
-		/*
-		 * Short circuit to bail out if we've got no work
-		 */
-		if (runningCount == 0) {
-			return;
-		}
+		return active;
+	}
 
-		/*
-		 * Step through the non-empty queues looking for the one that is going
-		 * to finish the quickest
-		 */
-		long nextTime = Long.MAX_VALUE;
+	private long computeNearestTTC(int numberRunning) {
+		long smallestLeft = Long.MAX_VALUE;
+
 		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
 			if (tQueue.isEmpty()) {
 				continue;
 			}
 
-			nextTime = Math.min(nextTime, tQueue.peek().estTimeToComplete(
-					runningCount));
+			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(
+					numberRunning), smallestLeft);
 		}
 
-		nextTime += this.lastUpdateTime;
+		return smallestLeft;
+	}
 
-		/*
-		 * If there isn't an event scheduled, push a new one in, if the time is
-		 * a new one, then we're going to build a new one and swap out the old
-		 * one in the sim queue
-		 */
-		if (this.currentProcessEvent == null) {
-			this.currentProcessEvent = new ProcessEvent(nextTime, this);
-			this.simMaster.addWork(this.currentProcessEvent);
-		} else if (this.currentProcessEvent.getEventTime() != nextTime) {
-			ProcessEvent newEvent = new ProcessEvent(nextTime, this);
-			this.simMaster.swapWork(this.currentProcessEvent, newEvent);
-			this.currentProcessEvent = newEvent;
+	private void runQueuesAhead(long timeDelta, int activeQueues) {
+		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			if (tQueue.isEmpty()) {
+				continue;
+			}
+
+			if (tQueue.peek().runTimeAhead(timeDelta, activeQueues)) {
+				this.handleAdvertisement(tQueue);
+			}
 		}
 	}
 
@@ -583,7 +527,8 @@ public class BGPSpeaker {
 
 		for (int tDest : this.inRib.keySet()) {
 			for (BGPRoute tRoute : this.inRib.get(tDest)) {
-				memCount += (tRoute.getPathLength() * 4 + 20) * tRoute.getSize();
+				memCount += (tRoute.getPathLength() * 4 + 20)
+						* tRoute.getSize();
 			}
 		}
 
@@ -610,5 +555,9 @@ public class BGPSpeaker {
 		}
 
 		return routeCount;
+	}
+	
+	public AS getASObject(){
+		return this.myAS;
 	}
 }

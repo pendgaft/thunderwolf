@@ -3,13 +3,16 @@ package events;
 import router.BGPSpeaker;
 
 public class ProcessEvent extends SimEvent {
+	
+	private long endTime;
 
-	public ProcessEvent(long eTime, BGPSpeaker owner) {
-		super(eTime, SimEvent.ROUTER_PROCESS, owner);
+	public ProcessEvent(long startTime, long endTime, BGPSpeaker owner) {
+		super(startTime, SimEvent.ROUTER_PROCESS, owner);
+		this.endTime = endTime;
 	}
 
 	public void handleEvent() {
-		this.getOwner().fireProcessTimer(this.getEventTime());
+		this.getOwner().runForwardTo(this.getEventTime(), this.endTime);
 	}
 
 	public boolean equals(Object rhs) {

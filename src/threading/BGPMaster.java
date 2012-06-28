@@ -3,7 +3,6 @@ package threading;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.*;
 
 import bgp.BGPRoute;
 import events.*;
@@ -16,25 +15,20 @@ public class BGPMaster implements Runnable {
 	private HashMap<Integer, Semaphore> workSem;
 	private Semaphore completeSem;
 
-	private ReentrantLock workQueueLock;
-	private PriorityQueue<SimEvent> workQueue;
-
 	private HashMap<Integer, ConcurrentLinkedQueue<SimEvent>> readyToRunQueue;
 
 	private HashMap<Integer, BGPSpeaker> topo;
 	private HashMap<Integer, Integer> asnToSlave;
 
-	private long lastEpoch;
-	private Queue<Long> mraiQueue;
-	
+	private Queue<MRAIFireEvent> mraiQueue;
+	private HashMap<Integer, Long> asnRunTo;
+
 	private BufferedWriter ribOut;
 	private BufferedWriter memOut;
 	private BufferedWriter statOut;
 	private List<Integer> asnIterList;
 
 	private static final int NUM_THREADS = 10;
-
-	private static final long EPOCH_TIME = 1000;
 
 	private static final String LOG = "logs/";
 
@@ -57,17 +51,16 @@ public class BGPMaster implements Runnable {
 		 */
 		for (BGPSpeaker tAS : routingTopo.values()) {
 			// TODO this size needs to be configured
-			tAS.advPath(new BGPRoute(tAS.getASN(), 1), 1);
+			tAS.advPath(new BGPRoute(tAS.getASN(), 1), 0);
 		}
 
 		/*
 		 * We need the initial MRAI fire events in here
 		 */
 		for (BGPSpeaker tAS : routingTopo.values()) {
-		    //long jitter = rng.nextLong() % 30000;
-		    long jitter = 0;
-			self.addWork(new MRAIFireEvent(30000 + jitter, tAS));
-			self.mraiQueue.add(jitter + 30000);
+			long jitter = rng.nextLong() % 30000;
+			tAS.setOpeningMRAI(30000 + jitter);
+			self.mraiQueue.add(new MRAIFireEvent(jitter + 30000, tAS));
 		}
 
 		/*
@@ -91,11 +84,8 @@ public class BGPMaster implements Runnable {
 		this.workOut = 0;
 		this.workSem = new HashMap<Integer, Semaphore>();
 		this.completeSem = new Semaphore(0);
-		this.workQueueLock = new ReentrantLock(true);
-		this.workQueue = new PriorityQueue<SimEvent>();
 		this.readyToRunQueue = new HashMap<Integer, ConcurrentLinkedQueue<SimEvent>>();
-		this.lastEpoch = 0;
-		this.mraiQueue = new PriorityQueue<Long>();
+		this.mraiQueue = new PriorityQueue<MRAIFireEvent>();
 
 		this.topo = routingTopo;
 		/*
@@ -105,31 +95,42 @@ public class BGPMaster implements Runnable {
 		for (BGPSpeaker tRouter : this.topo.values()) {
 			tRouter.registerBGPMaster(this);
 		}
-		
-		for(int counter = 0; counter < BGPMaster.NUM_THREADS; counter++){
+		this.asnRunTo = new HashMap<Integer, Long>();
+		for (int tASN : this.topo.keySet()) {
+			this.asnRunTo.put(tASN, (long) 0);
+		}
+
+		for (int counter = 0; counter < BGPMaster.NUM_THREADS; counter++) {
 			this.workSem.put(counter, new Semaphore(0));
-			this.readyToRunQueue.put(counter, new ConcurrentLinkedQueue<SimEvent>());
+			this.readyToRunQueue.put(counter,
+					new ConcurrentLinkedQueue<SimEvent>());
 		}
 
 		this.asnToSlave = new HashMap<Integer, Integer>();
 		int counter = 0;
-		for(BGPSpeaker tRouter: this.topo.values()){
+		for (BGPSpeaker tRouter : this.topo.values()) {
 			this.asnToSlave.put(tRouter.getASN(), counter);
 			counter++;
 			counter = counter % BGPMaster.NUM_THREADS;
 		}
-		
+
 		this.asnIterList = this.buildOrderedASNList();
 		this.setupStatPush();
 	}
 
 	public void run() {
 		boolean stillRunning = true;
+		boolean mraiRound = false;
+		long currentTime = 0;
 		long bgpStartTime = System.currentTimeMillis();
 		System.out.println("Starting up the BGP processing.");
 
 		while (stillRunning) {
-			this.spinUpWork();
+			if (mraiRound) {
+				currentTime = this.mraiQueue.peek().getEventTime();
+			}
+			this.spinUpWork(mraiRound, currentTime);
+			mraiRound = !mraiRound;
 
 			try {
 				this.wall();
@@ -137,12 +138,9 @@ public class BGPMaster implements Runnable {
 				e.printStackTrace();
 			}
 
-			this.workQueueLock.lock();
-			if (this.workQueue.peek().getEventTime() >= this.lastEpoch
-					+ BGPMaster.EPOCH_TIME) {
-				this.lastEpoch += BGPMaster.EPOCH_TIME;
-
-				this.statPush(this.lastEpoch);
+			if (mraiRound) {
+				//FIXME stats need to be pushed by nodes themseleves
+				//this.statPush(this.mraiQueue.peek().getEventTime());
 
 				stillRunning = false;
 				for (BGPSpeaker tRouter : this.topo.values()) {
@@ -152,48 +150,20 @@ public class BGPMaster implements Runnable {
 					}
 				}
 			}
-			this.workQueueLock.unlock();
 		}
 
 		bgpStartTime = System.currentTimeMillis() - bgpStartTime;
 		System.out.println("BGP done, this took: " + (bgpStartTime / 60000)
 				+ " minutes.");
-		System.out.println("Current step is: "
-				+ this.workQueue.peek().getEventTime());
+		System.out.println("Current step is: " + currentTime);
 
 		this.doneLogging();
 	}
 
-	/**
-	 * Public interface to hand an event to the simulator.
-	 * 
-	 * @param addedEvents
-	 */
-	public void addWork(SimEvent addedEvent) {
-		this.workQueueLock.lock();
-		this.workQueue.add(addedEvent);
-		this.workQueueLock.unlock();
-	}
-	
-	public void addMRAIFire(long time){
-		synchronized(this.mraiQueue){
-			this.mraiQueue.add(time);
+	public void addMRAIFire(MRAIFireEvent inEvent) {
+		synchronized (this.mraiQueue) {
+			this.mraiQueue.add(inEvent);
 		}
-	}
-
-	/**
-	 * Interface used to update the time of an event.
-	 * 
-	 * @param oldEvent
-	 *            - the old event
-	 * @param newEvent
-	 *            - the new event at the new time
-	 */
-	public void swapWork(SimEvent oldEvent, SimEvent newEvent) {
-		this.workQueueLock.lock();
-		this.workQueue.remove(oldEvent);
-		this.workQueue.add(newEvent);
-		this.workQueueLock.unlock();
 	}
 
 	public SimEvent getWork(int id) throws InterruptedException {
@@ -205,52 +175,57 @@ public class BGPMaster implements Runnable {
 		this.completeSem.release();
 	}
 
-	private void spinUpWork() {
+	private void spinUpWork(boolean mraiRound, long currentTime) {
 
-		this.workQueueLock.lock();
-		
-		/*
-		 * Run ahead to the next mrai
-		 */
-		long nextTime = this.mraiQueue.peek();
-		this.workOut = 0;
-
-		while (!this.workQueue.isEmpty()
-				&& this.workQueue.peek().getEventTime() < nextTime) {
-			SimEvent tEvent = this.workQueue.poll();
-			int slaveid = this.asnToSlave.get(tEvent.getOwner().getASN());
-			this.readyToRunQueue.get(slaveid).add(tEvent);
-			this.workSem.get(slaveid).release();
-			this.workOut++;
-		}
-
-		/*
-		 * If we didn't release anything, then we're doing this "mrai" event
-		 */
-		if(this.workOut == 0){
-			while(!this.workQueue.isEmpty() && this.workQueue.peek().getEventTime() == nextTime){
-				SimEvent tEvent = this.workQueue.poll();
-				int slaveid = this.asnToSlave.get(tEvent.getOwner().getASN());
-				this.readyToRunQueue.get(slaveid).add(tEvent);
-				this.workSem.get(slaveid).release();
-				this.workOut++;	
-			}
-			
+		if (mraiRound) {
 			/*
 			 * remove all MRAI pops
 			 */
-			while(!this.mraiQueue.isEmpty() && this.mraiQueue.peek() == nextTime){
-				this.mraiQueue.poll();
+			synchronized (this.mraiQueue) {
+				while (!this.mraiQueue.isEmpty()
+						&& this.mraiQueue.peek().getEventTime() == currentTime) {
+					MRAIFireEvent tEvent = this.mraiQueue.poll();
+					int slaveID = this.asnToSlave.get(tEvent.getOwner()
+							.getASN());
+					this.readyToRunQueue.get(slaveID).add(tEvent);
+					this.workSem.get(slaveID).release();
+					this.workOut++;
+				}
+			}
+
+		} else {
+			for (int tASN : this.topo.keySet()) {
+				long timeHorizon = this.computeNextAdjMRAI(tASN);
+				if (timeHorizon > this.asnRunTo.get(tASN)) {
+					this.asnRunTo.put(tASN, timeHorizon);
+					int slaveID = this.asnToSlave.get(tASN);
+					this.readyToRunQueue.get(slaveID).add(
+							new ProcessEvent(currentTime, timeHorizon,
+									this.topo.get(tASN)));
+					this.workSem.get(slaveID).release();
+					this.workOut++;
+				}
 			}
 		}
-		
-		this.workQueueLock.unlock();
 	}
 
 	public void wall() throws InterruptedException {
 		for (int counter = 0; counter < this.workOut; counter++) {
 			this.completeSem.acquire();
 		}
+		this.workOut = 0;
+	}
+
+	private long computeNextAdjMRAI(int asn) {
+		Set<Integer> adjASes = this.topo.get(asn).getASObject().getNeighbors();
+		adjASes.add(asn);
+
+		long min = Long.MAX_VALUE;
+		for (int tASN : adjASes) {
+			min = Math.min(min, this.topo.get(tASN).getNextMRAI());
+		}
+
+		return min;
 	}
 
 	private void setupStatPush() {
@@ -294,8 +269,9 @@ public class BGPMaster implements Runnable {
 				this.memOut.write("," + memLoad);
 			}
 
-			this.statOut.write("" + currentTime + "," + Stats.mean(memList) + "," + Stats.median(memList) + "," + Stats.max(memList));
-			
+			this.statOut.write("" + currentTime + "," + Stats.mean(memList)
+					+ "," + Stats.median(memList) + "," + Stats.max(memList));
+
 			this.ribOut.newLine();
 			this.memOut.newLine();
 			this.statOut.newLine();
