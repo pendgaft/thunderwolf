@@ -22,10 +22,11 @@ public class BGPSpeaker {
 
 	private HashMap<Integer, HashMap<Integer, BGPRoute>> adjInRib;
 	private HashMap<Integer, List<BGPRoute>> inRib;
+	private HashMap<Integer, BGPRoute> outRib;
 	private HashMap<Integer, Set<BGPSpeaker>> adjOutRib;
 	private HashMap<Integer, BGPRoute> locRib;
 
-	private HashSet<Integer> dirtyDest;
+	private HashMap<Integer, HashSet<Integer>> dirtyDests;
 
 	private HashMap<Integer, Queue<BGPUpdate>> incUpdateQueues;
 	private long lastUpdateTime;
@@ -50,22 +51,23 @@ public class BGPSpeaker {
 
 		this.adjInRib = new HashMap<Integer, HashMap<Integer, BGPRoute>>();
 		this.inRib = new HashMap<Integer, List<BGPRoute>>();
+		this.outRib = new HashMap<Integer, BGPRoute>();
 		this.adjOutRib = new HashMap<Integer, Set<BGPSpeaker>>();
 		this.locRib = new HashMap<Integer, BGPRoute>();
 
 		this.incUpdateQueues = new HashMap<Integer, Queue<BGPUpdate>>();
+		this.dirtyDests = new HashMap<Integer, HashSet<Integer>>();
 
 		/*
 		 * Setup the queues, including the odd "internal" queue
 		 */
 		for (int tASN : this.myAS.getNeighbors()) {
 			this.incUpdateQueues.put(tASN, new LinkedList<BGPUpdate>());
+			this.dirtyDests.put(tASN, new HashSet<Integer>());
 		}
 		this.incUpdateQueues.put(this.getASN(), new LinkedList<BGPUpdate>());
 		this.lastUpdateTime = 0;
 		this.nextMRAI = 0;
-
-		this.dirtyDest = new HashSet<Integer>();
 	}
 
 	/**
@@ -166,11 +168,14 @@ public class BGPSpeaker {
 	 * Currently exposed interface which triggers an expiration of THIS ROUTER'S
 	 * MRAI timer, resulting in updates being sent to this router's peers.
 	 */
+	//FIXME jesus christ new system go!
 	public synchronized void mraiExpire(long currentTime) {
 
-		synchronized (this.dirtyDest) {
-			for (int tDest : this.dirtyDest) {
-				this.sendUpdate(tDest, currentTime);
+		synchronized (this.dirtyDests) {
+			for (int tPeer : this.dirtyDests.keySet()) {
+				for (int tDest : this.dirtyDests.get(tPeer)) {
+					this.sendUpdate(tDest, tPeer, currentTime);
+				}
 			}
 			this.dirtyDest.clear();
 		}
@@ -180,22 +185,23 @@ public class BGPSpeaker {
 		}
 
 		// TODO configure this somehow in the future (mrai)
-		this.simMaster.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
+		this.simMaster
+				.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
 		this.nextMRAI = currentTime + 30000;
-		
+
 		if (DEBUG) {
 			System.out.println("MRAI fire RETURN at " + this.getASN());
 		}
 	}
-	
-	public void setOpeningMRAI(long time){
+
+	public void setOpeningMRAI(long time) {
 		this.nextMRAI = time;
 	}
 
-	public synchronized long getNextMRAI(){
+	public synchronized long getNextMRAI() {
 		return this.nextMRAI;
 	}
-	
+
 	/**
 	 * Public interface to be used by OTHER BGP Speakers to advertise a change
 	 * in a route to a destination.
@@ -203,10 +209,13 @@ public class BGPSpeaker {
 	 * @param incRoute
 	 *            - the route being advertised
 	 */
-	public void advPath(BGPRoute incRoute, long currentTime) {
-		this.incUpdateQueues.get(incRoute.getNextHop()).add(
-				BGPUpdate.buildAdvertisement(incRoute, this
-						.calcTotalRuntime(incRoute.getSize())));
+	public boolean advPath(BGPRoute incRoute, long currentTime) {
+		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute
+				.getNextHop());
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
+				.calcTotalRuntime(incRoute.getSize())));
+		
+		return incQueue.size() < 1000;
 	}
 
 	/**
@@ -218,12 +227,13 @@ public class BGPSpeaker {
 	 * @param dest
 	 *            - the destination of the route withdrawn
 	 */
-	public void withdrawPath(int withdrawingAS, int dest,
-			long currentTime) {
-		this.incUpdateQueues.get(withdrawingAS).add(
-				BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
-						.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(
-								dest).getSize())));
+	public boolean withdrawPath(int withdrawingAS, int dest, long currentTime) {
+		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
+		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
+				.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest)
+						.getSize())));
+
+		return incQueue.size() < 1000;
 	}
 
 	private long calcTotalRuntime(int size) {
@@ -318,8 +328,17 @@ public class BGPSpeaker {
 		 * If we have a new path, mark that we have a dirty destination
 		 */
 		if (changed) {
-			synchronized (this.dirtyDest) {
-				this.dirtyDest.add(dest);
+			synchronized (this.dirtyDests) {
+				if (currentBest == null) {
+					this.outRib.remove(dest);
+				} else {
+					BGPRoute pathToAdv = currentBest.deepCopy();
+					pathToAdv.appendASToPath(this.getASN());
+					this.outRib.put(dest, pathToAdv);
+				}
+				for (int tPeer : this.dirtyDests.keySet()) {
+					this.dirtyDests.get(tPeer).add(dest);
+				}
 			}
 		}
 	}
@@ -371,37 +390,31 @@ public class BGPSpeaker {
 	 *            - the destination of the route we need to advertise a change
 	 *            in
 	 */
-	private void sendUpdate(int dest, long currentTime) {
-		Set<BGPSpeaker> prevAdvedTo = this.adjOutRib.get(dest);
-		Set<BGPSpeaker> newAdvTo = new HashSet<BGPSpeaker>();
-		BGPRoute pathOfMerit = this.locRib.get(dest);
+	private boolean sendUpdate(int dest, int peer, long currentTime) {
+		boolean prevAdvedTo = this.adjOutRib.get(dest).contains(peer);
+		boolean newAdvTo = false;
+		boolean okToAdvMore = true;
+		BGPRoute pathToAdv = this.outRib.get(dest);
 
-		if (pathOfMerit != null) {
-			BGPRoute pathToAdv = pathOfMerit.deepCopy();
-			pathToAdv.appendASToPath(this.getASN());
-			for (int tCust : this.myAS.getCustomers()) {
-				this.peers.get(tCust).advPath(pathToAdv, currentTime);
-				newAdvTo.add(this.peers.get(tCust));
-			}
-			if (pathOfMerit.getDest() == this.getASN()
-					|| (this.myAS.getRel(pathOfMerit.getNextHop()) == 1)) {
-				for (int tPeer : this.myAS.getPeers()) {
-					this.peers.get(tPeer).advPath(pathToAdv, currentTime);
-					newAdvTo.add(this.peers.get(tPeer));
-				}
-				for (int tProv : this.myAS.getProviders()) {
-					this.peers.get(tProv).advPath(pathToAdv, currentTime);
-					newAdvTo.add(this.peers.get(tProv));
-				}
+		if (pathToAdv != null) {
+			if (this.myAS.getCustomers().contains(peer)
+					|| dest == this.getASN()
+					|| (this.myAS.getRel(pathToAdv.getNextHop()) == 1)) {
+				okToAdvMore = this.peers.get(peer).advPath(pathToAdv,
+						currentTime);
+				newAdvTo = true;
 			}
 		}
 
-		if (prevAdvedTo != null) {
-			prevAdvedTo.removeAll(newAdvTo);
-			for (BGPSpeaker tAS : prevAdvedTo) {
-				tAS.withdrawPath(this.getASN(), dest, currentTime);
-			}
+		if (prevAdvedTo && !newAdvTo) {
+			this.adjOutRib.get(dest).remove(peer);
+			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(),
+					dest, currentTime);
 		}
+
+		this.dirtyDests.get(peer).remove(dest);
+
+		return okToAdvMore;
 	}
 
 	/**
@@ -444,7 +457,13 @@ public class BGPSpeaker {
 			}
 		}
 
-		return this.dirtyDest.isEmpty();
+		for (HashSet<Integer> tSet : this.dirtyDests.values()) {
+			if (!tSet.isEmpty()) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -556,8 +575,8 @@ public class BGPSpeaker {
 
 		return routeCount;
 	}
-	
-	public AS getASObject(){
+
+	public AS getASObject() {
 		return this.myAS;
 	}
 }
