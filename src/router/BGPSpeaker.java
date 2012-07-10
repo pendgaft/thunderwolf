@@ -168,30 +168,31 @@ public class BGPSpeaker {
 	 * Currently exposed interface which triggers an expiration of THIS ROUTER'S
 	 * MRAI timer, resulting in updates being sent to this router's peers.
 	 */
-	//FIXME jesus christ new system go!
 	public synchronized void mraiExpire(long currentTime) {
 
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
+				HashSet<Integer> handled = new HashSet<Integer>();
+				
 				for (int tDest : this.dirtyDests.get(tPeer)) {
-					this.sendUpdate(tDest, tPeer, currentTime);
+					handled.add(tDest);
+					if(!this.sendUpdate(tDest, tPeer, currentTime)){
+						break;
+					}
 				}
+				
+				this.dirtyDests.get(tPeer).removeAll(handled);
 			}
-			this.dirtyDest.clear();
 		}
 
 		if (DEBUG) {
-			System.out.println("MRAI fire at " + this.getASN());
+			System.out.println("MRAI fire at " + this.getASN() + " time " + currentTime);
 		}
 
 		// TODO configure this somehow in the future (mrai)
 		this.simMaster
 				.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
 		this.nextMRAI = currentTime + 30000;
-
-		if (DEBUG) {
-			System.out.println("MRAI fire RETURN at " + this.getASN());
-		}
 	}
 
 	public void setOpeningMRAI(long time) {
@@ -391,18 +392,28 @@ public class BGPSpeaker {
 	 *            in
 	 */
 	private boolean sendUpdate(int dest, int peer, long currentTime) {
+		if(this.adjOutRib.get(dest) == null){
+			this.adjOutRib.put(dest, new HashSet<BGPSpeaker>());
+		}
+		
 		boolean prevAdvedTo = this.adjOutRib.get(dest).contains(peer);
 		boolean newAdvTo = false;
 		boolean okToAdvMore = true;
 		BGPRoute pathToAdv = this.outRib.get(dest);
 
 		if (pathToAdv != null) {
+			int nextHop = this.locRib.get(dest).getNextHop();
+			
 			if (this.myAS.getCustomers().contains(peer)
 					|| dest == this.getASN()
-					|| (this.myAS.getRel(pathToAdv.getNextHop()) == 1)) {
+					|| (this.myAS.getRel(nextHop) == 1)) {
 				okToAdvMore = this.peers.get(peer).advPath(pathToAdv,
 						currentTime);
 				newAdvTo = true;
+				
+				if(DEBUG){
+					System.out.println("adving: " + dest + " to " + peer);
+				}
 			}
 		}
 
@@ -411,8 +422,6 @@ public class BGPSpeaker {
 			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(),
 					dest, currentTime);
 		}
-
-		this.dirtyDests.get(peer).remove(dest);
 
 		return okToAdvMore;
 	}
