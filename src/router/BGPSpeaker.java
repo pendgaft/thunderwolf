@@ -199,7 +199,7 @@ public class BGPSpeaker {
 		this.nextMRAI = time;
 	}
 
-	public synchronized long getNextMRAI() {
+	public long getNextMRAI() {
 		return this.nextMRAI;
 	}
 
@@ -247,7 +247,7 @@ public class BGPSpeaker {
 		 * This should never happen, make sure it does not
 		 */
 		if (startTime != this.lastUpdateTime) {
-			throw new RuntimeException("Time gap in cpu calc!");
+			throw new RuntimeException("Time gap in cpu calc!\nASN: " + this.getASN() + " start time: " + startTime + " last update: " + this.lastUpdateTime);
 		}
 
 		long currentTime = startTime;

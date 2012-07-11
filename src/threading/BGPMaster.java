@@ -125,11 +125,13 @@ public class BGPMaster implements Runnable {
 		long bgpStartTime = System.currentTimeMillis();
 		System.out.println("Starting up the BGP processing.");
 
+		HashSet<Integer> runNextRound = new HashSet<Integer>();
+
 		while (stillRunning) {
 			if (mraiRound) {
 				currentTime = this.mraiQueue.peek().getEventTime();
 			}
-			this.spinUpWork(mraiRound, currentTime);
+			this.spinUpWork(mraiRound, runNextRound, currentTime);
 			mraiRound = !mraiRound;
 
 			try {
@@ -175,9 +177,16 @@ public class BGPMaster implements Runnable {
 		this.completeSem.release();
 	}
 
-	private void spinUpWork(boolean mraiRound, long currentTime) {
+	private void spinUpWork(boolean mraiRound, HashSet<Integer> runNextRound,
+			long currentTime) {
 
 		if (mraiRound) {
+
+			/*
+			 * Empty out the work set, as we'll be populating this now
+			 */
+			runNextRound.clear();
+
 			/*
 			 * remove all MRAI pops
 			 */
@@ -185,6 +194,15 @@ public class BGPMaster implements Runnable {
 				while (!this.mraiQueue.isEmpty()
 						&& this.mraiQueue.peek().getEventTime() == currentTime) {
 					MRAIFireEvent tEvent = this.mraiQueue.poll();
+
+					/*
+					 * Add all of the neighbors to the run next round list, as
+					 * they will be able to run ahead now
+					 */
+					runNextRound.addAll(tEvent.getOwner().getASObject()
+							.getNeighbors());
+					runNextRound.add(tEvent.getOwner().getASN());
+
 					int slaveID = this.asnToSlave.get(tEvent.getOwner()
 							.getASN());
 					this.readyToRunQueue.get(slaveID).add(tEvent);
@@ -194,7 +212,11 @@ public class BGPMaster implements Runnable {
 			}
 
 		} else {
-			for (int tASN : this.topo.keySet()) {
+			if(runNextRound.isEmpty()){
+				runNextRound.addAll(this.topo.keySet());
+			}
+			
+			for (int tASN : runNextRound) {
 				long timeHorizon = this.computeNextAdjMRAI(tASN);
 				if (timeHorizon > this.asnRunTo.get(tASN)) {
 					this.asnRunTo.put(tASN, timeHorizon);
@@ -296,6 +318,12 @@ public class BGPMaster implements Runnable {
 		}
 	}
 
+	/**
+	 * Function that builds a list of ASNs in ASN order. This is used in order
+	 * to report stats across a csv in a consistent manner.
+	 * 
+	 * @return a list of ASNs in the active topo in ascending order
+	 */
 	private List<Integer> buildOrderedASNList() {
 		List<Integer> retList = new ArrayList<Integer>();
 		retList.addAll(this.topo.keySet());
