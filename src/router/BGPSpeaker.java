@@ -110,7 +110,7 @@ public class BGPSpeaker {
 			advPeer = nextUpdate.getWithdrawer();
 			dest = nextUpdate.getWithdrawnDest();
 		} else {
-			advPeer = nextUpdate.getAdvertisedRoute().getNextHop();
+			advPeer = nextUpdate.getAdvertisedRoute().getNextHop(this.getASN());
 			dest = nextUpdate.getAdvertisedRoute().getDest();
 		}
 
@@ -143,7 +143,7 @@ public class BGPSpeaker {
 		List<BGPRoute> destRibList = this.inRib.get(dest);
 		if (routeRemoved) {
 			for (int counter = 0; counter < destRibList.size(); counter++) {
-				if (destRibList.get(counter).getNextHop() == advPeer) {
+				if (destRibList.get(counter).getNextHop(this.getASN()) == advPeer) {
 					destRibList.remove(counter);
 					break;
 				}
@@ -153,11 +153,8 @@ public class BGPSpeaker {
 		/*
 		 * If it is a loop don't add it to ribs
 		 */
-		if ((!nextUpdate.isWithdrawal())
-				&& (!nextUpdate.getAdvertisedRoute()
-						.containsLoop(this.getASN()))) {
-			advRibList.put(nextUpdate.getAdvertisedRoute().getDest(),
-					nextUpdate.getAdvertisedRoute());
+		if ((!nextUpdate.isWithdrawal()) && (!nextUpdate.getAdvertisedRoute().containsLoop(this.getASN()))) {
+			advRibList.put(nextUpdate.getAdvertisedRoute().getDest(), nextUpdate.getAdvertisedRoute());
 			destRibList.add(nextUpdate.getAdvertisedRoute());
 		}
 
@@ -173,14 +170,14 @@ public class BGPSpeaker {
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
 				HashSet<Integer> handled = new HashSet<Integer>();
-				
+
 				for (int tDest : this.dirtyDests.get(tPeer)) {
 					handled.add(tDest);
-					if(!this.sendUpdate(tDest, tPeer, currentTime)){
+					if (!this.sendUpdate(tDest, tPeer, currentTime)) {
 						break;
 					}
 				}
-				
+
 				this.dirtyDests.get(tPeer).removeAll(handled);
 			}
 		}
@@ -190,8 +187,7 @@ public class BGPSpeaker {
 		}
 
 		// TODO configure this somehow in the future (mrai)
-		this.simMaster
-				.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
+		this.simMaster.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
 		this.nextMRAI = currentTime + 30000;
 	}
 
@@ -211,11 +207,10 @@ public class BGPSpeaker {
 	 *            - the route being advertised
 	 */
 	public boolean advPath(BGPRoute incRoute, long currentTime) {
-		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute
-				.getNextHop());
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
-				.calcTotalRuntime(incRoute.getSize())));
-		
+		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute.getNextHop(this.getASN()));
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this.calcTotalRuntime(incRoute.getSize())));
+
+		//TODO base this off of route size
 		return incQueue.size() < 1000;
 	}
 
@@ -230,9 +225,8 @@ public class BGPSpeaker {
 	 */
 	public boolean withdrawPath(int withdrawingAS, int dest, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
-		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
-				.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest)
-						.getSize())));
+		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this.calcTotalRuntime(this.adjInRib.get(
+				withdrawingAS).get(dest).getSize())));
 
 		return incQueue.size() < 1000;
 	}
@@ -247,7 +241,8 @@ public class BGPSpeaker {
 		 * This should never happen, make sure it does not
 		 */
 		if (startTime != this.lastUpdateTime) {
-			throw new RuntimeException("Time gap in cpu calc!\nASN: " + this.getASN() + " start time: " + startTime + " last update: " + this.lastUpdateTime);
+			throw new RuntimeException("Time gap in cpu calc!\nASN: " + this.getASN() + " start time: " + startTime
+					+ " last update: " + this.lastUpdateTime);
 		}
 
 		long currentTime = startTime;
@@ -259,8 +254,7 @@ public class BGPSpeaker {
 				break;
 			}
 
-			long testTime = Math.min(this.computeNearestTTC(activeQueues),
-					stopTime - currentTime);
+			long testTime = Math.min(this.computeNearestTTC(activeQueues), stopTime - currentTime);
 			this.runQueuesAhead(testTime, activeQueues);
 			currentTime += testTime;
 		}
@@ -287,8 +281,7 @@ public class BGPSpeaker {
 				continue;
 			}
 
-			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(
-					numberRunning), smallestLeft);
+			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(numberRunning), smallestLeft);
 		}
 
 		return smallestLeft;
@@ -321,8 +314,7 @@ public class BGPSpeaker {
 		BGPRoute currentBest = this.pathSelection(possList);
 
 		BGPRoute currentInstall = this.locRib.get(dest);
-		changed = (currentInstall == null || !currentBest
-				.equals(currentInstall));
+		changed = (currentInstall == null || !currentBest.equals(currentInstall));
 		this.locRib.put(dest, currentBest);
 
 		/*
@@ -358,11 +350,11 @@ public class BGPSpeaker {
 		for (BGPRoute tPath : possList) {
 			if (currentBest == null) {
 				currentBest = tPath;
-				currentRel = this.myAS.getRel(currentBest.getNextHop());
+				currentRel = this.myAS.getRel(currentBest.getNextHop(this.getASN()));
 				continue;
 			}
 
-			int newRel = this.myAS.getRel(tPath.getNextHop());
+			int newRel = this.myAS.getRel(tPath.getNextHop(this.getASN()));
 			if (newRel > currentRel) {
 				currentBest = tPath;
 				currentRel = newRel;
@@ -371,9 +363,8 @@ public class BGPSpeaker {
 
 			if (newRel == currentRel) {
 				if (currentBest.getPathLength() > tPath.getPathLength()
-						|| (currentBest.getPathLength() == tPath
-								.getPathLength() && tPath.getNextHop() < currentBest
-								.getNextHop())) {
+						|| (currentBest.getPathLength() == tPath.getPathLength() && tPath.getNextHop(this.getASN()) < currentBest
+								.getNextHop(this.getASN()))) {
 					currentBest = tPath;
 					currentRel = newRel;
 				}
@@ -392,26 +383,23 @@ public class BGPSpeaker {
 	 *            in
 	 */
 	private boolean sendUpdate(int dest, int peer, long currentTime) {
-		if(this.adjOutRib.get(dest) == null){
+		if (this.adjOutRib.get(dest) == null) {
 			this.adjOutRib.put(dest, new HashSet<BGPSpeaker>());
 		}
-		
+
 		boolean prevAdvedTo = this.adjOutRib.get(dest).contains(peer);
 		boolean newAdvTo = false;
 		boolean okToAdvMore = true;
 		BGPRoute pathToAdv = this.outRib.get(dest);
 
 		if (pathToAdv != null) {
-			int nextHop = this.locRib.get(dest).getNextHop();
-			
-			if (this.myAS.getCustomers().contains(peer)
-					|| dest == this.getASN()
-					|| (this.myAS.getRel(nextHop) == 1)) {
-				okToAdvMore = this.peers.get(peer).advPath(pathToAdv,
-						currentTime);
+			int nextHop = this.locRib.get(dest).getNextHop(this.getASN());
+
+			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN() || (this.myAS.getRel(nextHop) == 1)) {
+				okToAdvMore = this.peers.get(peer).advPath(pathToAdv, currentTime);
 				newAdvTo = true;
-				
-				if(DEBUG){
+
+				if (DEBUG) {
 					System.out.println("adving: " + dest + " to " + peer);
 				}
 			}
@@ -419,8 +407,7 @@ public class BGPSpeaker {
 
 		if (prevAdvedTo && !newAdvTo) {
 			this.adjOutRib.get(dest).remove(peer);
-			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(),
-					dest, currentTime);
+			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(), dest, currentTime);
 		}
 
 		return okToAdvMore;
@@ -555,8 +542,7 @@ public class BGPSpeaker {
 
 		for (int tDest : this.inRib.keySet()) {
 			for (BGPRoute tRoute : this.inRib.get(tDest)) {
-				memCount += (tRoute.getPathLength() * 4 + 20)
-						* tRoute.getSize();
+				memCount += (tRoute.getPathLength() * 4 + 20) * tRoute.getSize();
 			}
 		}
 
