@@ -117,12 +117,12 @@ public class BGPRoute {
 	 * 
 	 * @return - the next hop in the route, ourself if we're the originating AS
 	 */
-	public int getNextHop() {
+	public int getNextHop(int myASN) {
 		/*
 		 * hack for paths to ourself
 		 */
 		if (this.path.size() == 0) {
-			return this.destASN;
+			return myASN;
 		}
 
 		return this.path.getFirst();
