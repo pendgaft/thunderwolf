@@ -26,8 +26,8 @@ public class ASTopoParser {
 	 *             - if there is an error reading either the relationship or
 	 *             cidr file
 	 */
-	public static HashMap<Integer, BGPSpeaker> doNetworkBuild() throws IOException {
-		HashMap<Integer, AS> asMap = ASTopoParser.parseFile(ASTopoParser.AS_REL_FILE, ASTopoParser.AS_IP_FILE);
+	public static HashMap<Integer, BGPSpeaker> doNetworkBuild(String asRelFile) throws IOException {
+		HashMap<Integer, AS> asMap = ASTopoParser.parseFile(asRelFile + "-rel.txt", asRelFile + "-ip.txt");
 
 		/*
 		 * Build the actual routers, pass a reference to the router map itself
