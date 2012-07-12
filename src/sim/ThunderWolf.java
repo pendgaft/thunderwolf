@@ -5,6 +5,7 @@ import java.io.*;
 
 import router.BGPSpeaker;
 import router.ASTopoParser;
+import networkConfig.*;
 import threading.BGPMaster;
 
 public class ThunderWolf {
@@ -20,7 +21,7 @@ public class ThunderWolf {
 		 */
 		System.out.println("Creating router topology.");
 		start = System.currentTimeMillis();
-		HashMap<Integer, BGPSpeaker> routerMap = ASTopoParser.doNetworkBuild();
+		HashMap<Integer, BGPSpeaker> routerMap = ASTopoParser.doNetworkBuild(args[0]);
 		end = System.currentTimeMillis();
 		System.out.println("Topology created in: " + (end - start) / 1000
 				+ " seconds.\n");
@@ -34,9 +35,22 @@ public class ThunderWolf {
 				System.out.println(tRouter.printDebugString());
 			}
 		}
-
+		
+		/*
+		 * Setup network seeder
+		 */
+		NetworkSeeder netSeed = null;
+		if(args[1].equalsIgnoreCase("even")){
+			netSeed = new EvenSeed(routerMap);
+		} else if(args[1].equalsIgnoreCase("injector")){
+			netSeed = new SingleInjector(routerMap, 1, 350000);
+		} else{
+			System.err.println("Bad mode given: " + args[1]);
+			return;
+		}
+		
 		System.out.println("Firing Sim Trigger");
-		BGPMaster.driveSim(routerMap);
+		BGPMaster.driveSim(routerMap, netSeed);
 
 		if (DEBUG) {
 			System.out
