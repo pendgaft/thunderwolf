@@ -4,7 +4,7 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-import bgp.BGPRoute;
+import networkConfig.NetworkSeeder;
 import events.*;
 import router.BGPSpeaker;
 import util.Stats;
@@ -32,7 +32,7 @@ public class BGPMaster implements Runnable {
 
 	private static final String LOG = "logs/";
 
-	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo)
+	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo, NetworkSeeder netSeed)
 			throws IOException {
 		Random rng = new Random();
 
@@ -49,10 +49,7 @@ public class BGPMaster implements Runnable {
 		 * Give everyone their self network, this will trigger events being
 		 * placed into the sim queue for CPU finished
 		 */
-		for (BGPSpeaker tAS : routingTopo.values()) {
-			// TODO this size needs to be configured
-			tAS.advPath(new BGPRoute(tAS.getASN(), 1), 0);
-		}
+		netSeed.initialSeed();
 
 		/*
 		 * We need the initial MRAI fire events in here
