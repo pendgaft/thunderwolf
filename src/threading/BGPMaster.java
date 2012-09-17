@@ -7,33 +7,26 @@ import java.util.concurrent.*;
 import networkConfig.NetworkSeeder;
 import events.*;
 import router.BGPSpeaker;
-import util.Stats;
+import logging.SimLogger;
 
 public class BGPMaster implements Runnable {
 
 	private int workOut;
-	private HashMap<Integer, Semaphore> workSem;
+	private Semaphore workSem;
 	private Semaphore completeSem;
 
-	private HashMap<Integer, ConcurrentLinkedQueue<SimEvent>> readyToRunQueue;
+	private ConcurrentLinkedQueue<SimEvent> readyToRunQueue;
 
 	private HashMap<Integer, BGPSpeaker> topo;
-	private HashMap<Integer, Integer> asnToSlave;
 
 	private Queue<MRAIFireEvent> mraiQueue;
 	private HashMap<Integer, Long> asnRunTo;
-
-	private BufferedWriter ribOut;
-	private BufferedWriter memOut;
-	private BufferedWriter statOut;
-	private List<Integer> asnIterList;
+	private SimLogger logMaster;
 
 	private static final int NUM_THREADS = 10;
 
-	private static final String LOG = "logs/";
-
-	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo, NetworkSeeder netSeed)
-			throws IOException {
+	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo,
+			NetworkSeeder netSeed) throws IOException {
 		Random rng = new Random();
 
 		/*
@@ -79,9 +72,9 @@ public class BGPMaster implements Runnable {
 
 	public BGPMaster(HashMap<Integer, BGPSpeaker> routingTopo) {
 		this.workOut = 0;
-		this.workSem = new HashMap<Integer, Semaphore>();
+		this.workSem = new Semaphore(0);
 		this.completeSem = new Semaphore(0);
-		this.readyToRunQueue = new HashMap<Integer, ConcurrentLinkedQueue<SimEvent>>();
+		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
 		this.mraiQueue = new PriorityQueue<MRAIFireEvent>();
 
 		this.topo = routingTopo;
@@ -97,22 +90,15 @@ public class BGPMaster implements Runnable {
 			this.asnRunTo.put(tASN, (long) 0);
 		}
 
-		for (int counter = 0; counter < BGPMaster.NUM_THREADS; counter++) {
-			this.workSem.put(counter, new Semaphore(0));
-			this.readyToRunQueue.put(counter,
-					new ConcurrentLinkedQueue<SimEvent>());
+		try {
+			//TODO make this file name configurable
+			this.logMaster = new SimLogger("test", this.topo);
+			this.logMaster.setupStatPush();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.out.println("Logger setup failed, aborting.");
+			System.exit(2);
 		}
-
-		this.asnToSlave = new HashMap<Integer, Integer>();
-		int counter = 0;
-		for (BGPSpeaker tRouter : this.topo.values()) {
-			this.asnToSlave.put(tRouter.getASN(), counter);
-			counter++;
-			counter = counter % BGPMaster.NUM_THREADS;
-		}
-
-		this.asnIterList = this.buildOrderedASNList();
-		this.setupStatPush();
 	}
 
 	public void run() {
@@ -138,9 +124,6 @@ public class BGPMaster implements Runnable {
 			}
 
 			if (mraiRound) {
-				//FIXME stats need to be pushed by nodes themseleves
-				//this.statPush(this.mraiQueue.peek().getEventTime());
-
 				stillRunning = false;
 				for (BGPSpeaker tRouter : this.topo.values()) {
 					if (!tRouter.isDone()) {
@@ -156,7 +139,13 @@ public class BGPMaster implements Runnable {
 				+ " minutes.");
 		System.out.println("Current step is: " + currentTime);
 
-		this.doneLogging();
+		try {
+			this.logMaster.doneLogging();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.out
+					.println("Error closing logs, might be bad, but trying to muddle through.");
+		}
 	}
 
 	public void addMRAIFire(MRAIFireEvent inEvent) {
@@ -165,13 +154,17 @@ public class BGPMaster implements Runnable {
 		}
 	}
 
-	public SimEvent getWork(int id) throws InterruptedException {
-		this.workSem.get(id).acquire();
-		return this.readyToRunQueue.get(id).poll();
+	public SimEvent getWork() throws InterruptedException {
+		this.workSem.acquire();
+		return this.readyToRunQueue.poll();
 	}
 
 	public void reportWorkDone() {
 		this.completeSem.release();
+	}
+	
+	public SimLogger getLoggingHook(){
+		return this.logMaster;
 	}
 
 	private void spinUpWork(boolean mraiRound, HashSet<Integer> runNextRound,
@@ -188,6 +181,7 @@ public class BGPMaster implements Runnable {
 			 * remove all MRAI pops
 			 */
 			synchronized (this.mraiQueue) {
+				//FIXME going to make these unique, remove collision logic
 				while (!this.mraiQueue.isEmpty()
 						&& this.mraiQueue.peek().getEventTime() == currentTime) {
 					MRAIFireEvent tEvent = this.mraiQueue.poll();
@@ -200,28 +194,25 @@ public class BGPMaster implements Runnable {
 							.getNeighbors());
 					runNextRound.add(tEvent.getOwner().getASN());
 
-					int slaveID = this.asnToSlave.get(tEvent.getOwner()
-							.getASN());
-					this.readyToRunQueue.get(slaveID).add(tEvent);
-					this.workSem.get(slaveID).release();
+					//FIXME this needs to be run in a single thread first!!!!!
+					this.readyToRunQueue.add(tEvent);
+					this.workSem.release();
 					this.workOut++;
 				}
 			}
 
 		} else {
-			if(runNextRound.isEmpty()){
+			if (runNextRound.isEmpty()) {
 				runNextRound.addAll(this.topo.keySet());
 			}
-			
+
 			for (int tASN : runNextRound) {
 				long timeHorizon = this.computeNextAdjMRAI(tASN);
 				if (timeHorizon > this.asnRunTo.get(tASN)) {
 					this.asnRunTo.put(tASN, timeHorizon);
-					int slaveID = this.asnToSlave.get(tASN);
-					this.readyToRunQueue.get(slaveID).add(
-							new ProcessEvent(currentTime, timeHorizon,
-									this.topo.get(tASN)));
-					this.workSem.get(slaveID).release();
+					this.readyToRunQueue.add(new ProcessEvent(currentTime,
+							timeHorizon, this.topo.get(tASN)));
+					this.workSem.release();
 					this.workOut++;
 				}
 			}
@@ -245,86 +236,5 @@ public class BGPMaster implements Runnable {
 		}
 
 		return min;
-	}
-
-	private void setupStatPush() {
-
-		try {
-			this.ribOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
-					+ "rib-full.csv"));
-			this.memOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
-					+ "mem-full.csv"));
-			this.statOut = new BufferedWriter(new FileWriter(BGPMaster.LOG
-					+ "stats.csv"));
-
-			for (int counter = 0; counter < this.asnIterList.size(); counter++) {
-				this.ribOut.write("," + this.asnIterList.get(counter));
-				this.memOut.write("," + this.asnIterList.get(counter));
-			}
-			this.ribOut.newLine();
-			this.memOut.newLine();
-			this.statOut.write(",avg mem,med mem");
-			this.statOut.newLine();
-		} catch (IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-	}
-
-	private void statPush(long currentTime) {
-		List<Long> memList = new ArrayList<Long>();
-
-		try {
-			this.ribOut.write("" + currentTime);
-			this.memOut.write("" + currentTime);
-
-			for (int counter = 0; counter < this.asnIterList.size(); counter++) {
-				this.ribOut.write(","
-						+ this.topo.get(this.asnIterList.get(counter))
-								.calcTotalRouteCount());
-				long memLoad = this.topo.get(this.asnIterList.get(counter))
-						.memLoad();
-				memList.add(memLoad);
-				this.memOut.write("," + memLoad);
-			}
-
-			this.statOut.write("" + currentTime + "," + Stats.mean(memList)
-					+ "," + Stats.median(memList) + "," + Stats.max(memList));
-
-			this.ribOut.newLine();
-			this.memOut.newLine();
-			this.statOut.newLine();
-
-			this.ribOut.flush();
-			this.memOut.flush();
-			this.statOut.flush();
-		} catch (IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-	}
-
-	private void doneLogging() {
-		try {
-			this.ribOut.close();
-			this.memOut.close();
-			this.statOut.close();
-		} catch (IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-	}
-
-	/**
-	 * Function that builds a list of ASNs in ASN order. This is used in order
-	 * to report stats across a csv in a consistent manner.
-	 * 
-	 * @return a list of ASNs in the active topo in ascending order
-	 */
-	private List<Integer> buildOrderedASNList() {
-		List<Integer> retList = new ArrayList<Integer>();
-		retList.addAll(this.topo.keySet());
-		Collections.sort(retList);
-		return retList;
 	}
 }

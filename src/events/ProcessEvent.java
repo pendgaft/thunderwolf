@@ -1,18 +1,20 @@
 package events;
 
 import router.BGPSpeaker;
+import logging.SimLogger;
 
 public class ProcessEvent extends SimEvent {
 	
 	private long endTime;
-
+	
 	public ProcessEvent(long startTime, long endTime, BGPSpeaker owner) {
 		super(startTime, SimEvent.ROUTER_PROCESS, owner);
 		this.endTime = endTime;
 	}
 
-	public void handleEvent() {
+	public void handleEvent(SimLogger theLogger) {
 		this.getOwner().runForwardTo(this.getEventTime(), this.endTime);
+		theLogger.reportMemLoad(this.getOwner().getASN(), this.endTime, this.getOwner().memLoad());
 	}
 
 	public boolean equals(Object rhs) {

@@ -14,9 +14,6 @@ import java.io.*;
  */
 public class ASTopoParser {
 
-	private static final String AS_REL_FILE = "as-rel.txt";
-	private static final String AS_IP_FILE = "ip-count.txt";
-
 	/**
 	 * Static function that does the actual building of BGPSpeaker objects. It
 	 * of course builds the AS objects first, then creates the BGP Speakers

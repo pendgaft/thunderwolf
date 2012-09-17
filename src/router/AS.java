@@ -3,6 +3,8 @@ package router;
 import java.util.HashSet;
 import java.util.Set;
 
+import sim.ThunderWolf;
+
 import bgp.BGPException;
 
 /**
@@ -153,9 +155,13 @@ public class AS {
 			return 2;
 		}
 
-		throw new BGPException(
-				"Asked for relation on non-adj/non-self asn!  Me: " + this.asn
-						+ " Them: " + asn);
+		if (ThunderWolf.FASTANDLOOSE) {
+			return AS.CUSTOMER_CODE;
+		} else {
+			throw new BGPException(
+					"Asked for relation on non-adj/non-self asn!  Me: "
+							+ this.asn + " Them: " + asn);
+		}
 	}
 
 	/**

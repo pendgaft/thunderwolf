@@ -1,6 +1,7 @@
 package events;
 
 import router.BGPSpeaker;
+import logging.SimLogger;
 
 public abstract class SimEvent implements Comparable<SimEvent> {
 
@@ -19,7 +20,7 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 		this.myOwner = owner;
 	}
 
-	public abstract void handleEvent();
+	public abstract void handleEvent(SimLogger theLogger);
 
 	public long getEventTime() {
 		return this.eventTime;

@@ -35,6 +35,8 @@ public class BGPSpeaker {
 	private BGPMaster simMaster;
 
 	private static boolean DEBUG = false;
+	private static final long MRAI_LENGTH = 30000;
+	private static final long QUEUE_SIZE = 10000;
 
 	/**
 	 * Constructor which sets up a BGP speaker.
@@ -153,8 +155,11 @@ public class BGPSpeaker {
 		/*
 		 * If it is a loop don't add it to ribs
 		 */
-		if ((!nextUpdate.isWithdrawal()) && (!nextUpdate.getAdvertisedRoute().containsLoop(this.getASN()))) {
-			advRibList.put(nextUpdate.getAdvertisedRoute().getDest(), nextUpdate.getAdvertisedRoute());
+		if ((!nextUpdate.isWithdrawal())
+				&& (!nextUpdate.getAdvertisedRoute()
+						.containsLoop(this.getASN()))) {
+			advRibList.put(nextUpdate.getAdvertisedRoute().getDest(),
+					nextUpdate.getAdvertisedRoute());
 			destRibList.add(nextUpdate.getAdvertisedRoute());
 		}
 
@@ -183,12 +188,16 @@ public class BGPSpeaker {
 		}
 
 		if (DEBUG) {
-			System.out.println("MRAI fire at " + this.getASN() + " time " + currentTime);
+			System.out.println("MRAI fire at " + this.getASN() + " time "
+					+ currentTime);
 		}
 
-		// TODO configure this somehow in the future (mrai)
-		this.simMaster.addMRAIFire(new MRAIFireEvent(currentTime + 30000, this));
-		this.nextMRAI = currentTime + 30000;
+		/*
+		 * Push in the next MRAI, right now everybody is using the same one
+		 */
+		this.simMaster.addMRAIFire(new MRAIFireEvent(currentTime
+				+ BGPSpeaker.MRAI_LENGTH, this));
+		this.nextMRAI = currentTime + BGPSpeaker.MRAI_LENGTH;
 	}
 
 	public void setOpeningMRAI(long time) {
@@ -207,11 +216,31 @@ public class BGPSpeaker {
 	 *            - the route being advertised
 	 */
 	public boolean advPath(BGPRoute incRoute, long currentTime) {
-		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute.getNextHop(this.getASN()));
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this.calcTotalRuntime(incRoute.getSize())));
+		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute
+				.getNextHop(this.getASN()));
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
+				.calcTotalRuntime(incRoute.getSize())));
 
 		//TODO base this off of route size
-		return incQueue.size() < 1000;
+		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
+	}
+
+	/**
+	 * Public interface to be used by THIS BGP Speaker to advertise a route to
+	 * itself. This would be from a route handed over internally from a
+	 * configuration or internal. This can also be used by an injector to handle
+	 * faking AS paths.
+	 * 
+	 * @param incRoute
+	 *            - the route being advertised
+	 */
+	public boolean selfInstallPath(BGPRoute incRoute, long currentTime) {
+		Queue<BGPUpdate> incQueue = this.incUpdateQueues
+				.get(this.myAS.getASN());
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
+				.calcTotalRuntime(incRoute.getSize())));
+
+		return true;
 	}
 
 	/**
@@ -225,14 +254,17 @@ public class BGPSpeaker {
 	 */
 	public boolean withdrawPath(int withdrawingAS, int dest, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
-		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this.calcTotalRuntime(this.adjInRib.get(
-				withdrawingAS).get(dest).getSize())));
+		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
+				.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest)
+						.getSize())));
 
-		return incQueue.size() < 1000;
+		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
 	}
+	
+	
 
 	private long calcTotalRuntime(int size) {
-		return (long) size * 10;
+		return (long) size * 2;
 	}
 
 	public void runForwardTo(long startTime, long stopTime) {
@@ -241,7 +273,8 @@ public class BGPSpeaker {
 		 * This should never happen, make sure it does not
 		 */
 		if (startTime != this.lastUpdateTime) {
-			throw new RuntimeException("Time gap in cpu calc!\nASN: " + this.getASN() + " start time: " + startTime
+			throw new RuntimeException("Time gap in cpu calc!\nASN: "
+					+ this.getASN() + " start time: " + startTime
 					+ " last update: " + this.lastUpdateTime);
 		}
 
@@ -254,7 +287,8 @@ public class BGPSpeaker {
 				break;
 			}
 
-			long testTime = Math.min(this.computeNearestTTC(activeQueues), stopTime - currentTime);
+			long testTime = Math.min(this.computeNearestTTC(activeQueues),
+					stopTime - currentTime);
 			this.runQueuesAhead(testTime, activeQueues);
 			currentTime += testTime;
 		}
@@ -281,7 +315,8 @@ public class BGPSpeaker {
 				continue;
 			}
 
-			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(numberRunning), smallestLeft);
+			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(
+					numberRunning), smallestLeft);
 		}
 
 		return smallestLeft;
@@ -314,7 +349,8 @@ public class BGPSpeaker {
 		BGPRoute currentBest = this.pathSelection(possList);
 
 		BGPRoute currentInstall = this.locRib.get(dest);
-		changed = (currentInstall == null || !currentBest.equals(currentInstall));
+		changed = (currentInstall == null || !currentBest
+				.equals(currentInstall));
 		this.locRib.put(dest, currentBest);
 
 		/*
@@ -350,7 +386,8 @@ public class BGPSpeaker {
 		for (BGPRoute tPath : possList) {
 			if (currentBest == null) {
 				currentBest = tPath;
-				currentRel = this.myAS.getRel(currentBest.getNextHop(this.getASN()));
+				currentRel = this.myAS.getRel(currentBest.getNextHop(this
+						.getASN()));
 				continue;
 			}
 
@@ -363,8 +400,10 @@ public class BGPSpeaker {
 
 			if (newRel == currentRel) {
 				if (currentBest.getPathLength() > tPath.getPathLength()
-						|| (currentBest.getPathLength() == tPath.getPathLength() && tPath.getNextHop(this.getASN()) < currentBest
-								.getNextHop(this.getASN()))) {
+						|| (currentBest.getPathLength() == tPath
+								.getPathLength() && tPath.getNextHop(this
+								.getASN()) < currentBest.getNextHop(this
+								.getASN()))) {
 					currentBest = tPath;
 					currentRel = newRel;
 				}
@@ -395,8 +434,11 @@ public class BGPSpeaker {
 		if (pathToAdv != null) {
 			int nextHop = this.locRib.get(dest).getNextHop(this.getASN());
 
-			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN() || (this.myAS.getRel(nextHop) == 1)) {
-				okToAdvMore = this.peers.get(peer).advPath(pathToAdv, currentTime);
+			if (this.myAS.getCustomers().contains(peer)
+					|| dest == this.getASN()
+					|| (this.myAS.getRel(nextHop) == 1)) {
+				okToAdvMore = this.peers.get(peer).advPath(pathToAdv,
+						currentTime);
 				newAdvTo = true;
 
 				if (DEBUG) {
@@ -407,7 +449,8 @@ public class BGPSpeaker {
 
 		if (prevAdvedTo && !newAdvTo) {
 			this.adjOutRib.get(dest).remove(peer);
-			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(), dest, currentTime);
+			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(),
+					dest, currentTime);
 		}
 
 		return okToAdvMore;
@@ -542,7 +585,8 @@ public class BGPSpeaker {
 
 		for (int tDest : this.inRib.keySet()) {
 			for (BGPRoute tRoute : this.inRib.get(tDest)) {
-				memCount += (tRoute.getPathLength() * 4 + 20) * tRoute.getSize();
+				memCount += (tRoute.getPathLength() * 15)
+						+ (405 * tRoute.getSize());
 			}
 		}
 

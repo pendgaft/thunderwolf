@@ -18,6 +18,7 @@ public class BGPUpdate {
 	/**
 	 * The "destination network" (see BGPRoute) that is being withdrawn
 	 */
+	//TODO at some point it would be more realistic to pack multiple withdraws into one msg
 	private int withdrawalDest;
 
 	/**
@@ -30,7 +31,7 @@ public class BGPUpdate {
 	 * The Route being advertised if this is NOT an explicit withdrawal message
 	 */
 	private BGPRoute advRoute;
-	
+
 	private long completedRuntime;
 	private long totalRuntime;
 
@@ -56,7 +57,8 @@ public class BGPUpdate {
 	 *            - our (the withdrawaler)'s ASN
 	 * @return - the update object that represents this
 	 */
-	public static BGPUpdate buildWithdrawal(int withDest, int updateSrc, long runtime) {
+	public static BGPUpdate buildWithdrawal(int withDest, int updateSrc,
+			long runtime) {
 		return new BGPUpdate(withDest, updateSrc, runtime);
 	}
 
@@ -106,7 +108,8 @@ public class BGPUpdate {
 		 * Sanity check that this isn't an explicit withdrawal message
 		 */
 		if (this.isWithdrawal()) {
-			throw new BGPException("Attempted to fetch path from explcit withdrawal!");
+			throw new BGPException(
+					"Attempted to fetch path from explcit withdrawal!");
 		}
 
 		return this.advRoute;
@@ -122,7 +125,8 @@ public class BGPUpdate {
 		 * Sanity check that this isn't an advertisement message
 		 */
 		if (!this.isWithdrawal()) {
-			throw new BGPException("Attempted to fetch withdrawal dest from an advertisement bearing update!");
+			throw new BGPException(
+					"Attempted to fetch withdrawal dest from an advertisement bearing update!");
 		}
 
 		return this.withdrawalDest;
@@ -140,20 +144,38 @@ public class BGPUpdate {
 		 * Sanity check that this isn't an advertisement message
 		 */
 		if (!this.isWithdrawal()) {
-			throw new BGPException("Attempted to fetch withdrawal dest from an advertisement bearing update!");
+			throw new BGPException(
+					"Attempted to fetch withdrawal dest from an advertisement bearing update!");
 		}
 
 		return this.withrdawalSource;
 	}
-	
-	public boolean runTimeAhead(long time, int numberRunning){
-		long fractionOfTime = (long)Math.ceil(time / numberRunning);
+
+	public boolean runTimeAhead(long time, int numberRunning) {
+		long fractionOfTime = (long) Math.ceil(time / numberRunning);
 		this.completedRuntime += fractionOfTime;
 		return this.completedRuntime - this.totalRuntime >= 0;
 	}
-	
-	public long estTimeToComplete(int numberRunning){
+
+	public long estTimeToComplete(int numberRunning) {
 		long timeLeft = this.totalRuntime - this.completedRuntime;
 		return timeLeft * numberRunning;
+	}
+
+	/**
+	 * Computes the size this update will take up when in I/O buffers. Currently
+	 * this does NOT add on packet headers. I _think_ that is an ok assumption,
+	 * as in general updates get packed as tightly as they can and the header
+	 * overhead should only be about 4%.
+	 * 
+	 * @return the size of the update in bytes when in an I/O buffer or on the
+	 *         wire
+	 */
+	public long getWireSize() {
+		if (this.isWithdrawal()) {
+			return 27;
+		} else {
+			return 44 + this.getAdvertisedRoute().getPathLength() * 4;
+		}
 	}
 }

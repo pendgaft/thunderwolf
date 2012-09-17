@@ -11,6 +11,7 @@ import threading.BGPMaster;
 public class ThunderWolf {
 
 	public static final boolean DEBUG = false;
+	public static final boolean FASTANDLOOSE = true;
 
 	public static void main(String[] args) throws IOException {
 
@@ -43,7 +44,7 @@ public class ThunderWolf {
 		if(args[1].equalsIgnoreCase("even")){
 			netSeed = new EvenSeed(routerMap);
 		} else if(args[1].equalsIgnoreCase("injector")){
-			netSeed = new SingleInjector(routerMap, 1, 350000);
+			netSeed = new SingleInjector(routerMap, 1, 350000, 10);
 		} else{
 			System.err.println("Bad mode given: " + args[1]);
 			return;

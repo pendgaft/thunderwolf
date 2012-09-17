@@ -20,8 +20,8 @@ public class ThreadWorker implements Runnable {
 				/*
 				 * Fetch work from master, do it, report back
 				 */
-				SimEvent task = this.workSource.getWork(this.myID);
-				task.handleEvent();
+				SimEvent task = this.workSource.getWork();
+				task.handleEvent(this.workSource.getLoggingHook());
 				this.workSource.reportWorkDone();
 			}
 		} catch (InterruptedException e) {

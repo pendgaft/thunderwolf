@@ -1,6 +1,7 @@
 package events;
 
 import router.BGPSpeaker;
+import logging.SimLogger;
 
 public class MRAIFireEvent extends SimEvent{
 	
@@ -8,7 +9,7 @@ public class MRAIFireEvent extends SimEvent{
 		super(time, SimEvent.MRAI_EVENT, self);
 	}
 
-	public void handleEvent() {
+	public void handleEvent(SimLogger theLogger) {
 		this.getOwner().mraiExpire(this.getEventTime());
 	}
 }
