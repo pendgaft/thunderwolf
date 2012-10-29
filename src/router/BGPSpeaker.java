@@ -2,6 +2,7 @@ package router;
 
 import java.util.*;
 
+import router.data.RouterSendCapacity;
 import threading.BGPMaster;
 import events.MRAIFireEvent;
 import bgp.BGPRoute;
@@ -166,6 +167,56 @@ public class BGPSpeaker {
 		recalcBestPath(dest);
 	}
 
+	public RouterSendCapacity computeSendCap(int sendingASN) {		
+		/*
+		 * XXX so, here is the slight issue/abstraction with this. We don't
+		 * actually take into account queues that will start or finish
+		 * processing in this time window. Either could happen, so solutions for
+		 * this... Well, we could get around the "start up issue" by only
+		 * advertising till the next window in the neighborhood fires. (Holy
+		 * shit prob murder our performace.) The other one we would have to
+		 * compute if a queue finishes (pre-compute & save? compute twice?, and
+		 * then if so _when_ it finishes, and adjust accordingly).
+		 */
+
+		/*
+		 * Figure out exactly how much CPU time this queue is gettting, based on
+		 * currently running queues.
+		 */
+		long fractionOfTimeMine = BGPSpeaker.MRAI_LENGTH;
+		int runningQueues = this.countActiveQueues();
+		if (this.incUpdateQueues.get(sendingASN).isEmpty()) {
+			runningQueues++;
+		}
+		fractionOfTimeMine = (long) Math.floor(fractionOfTimeMine
+				/ runningQueues);
+
+		
+		
+		// TODO think on this when you're not on a plane
+		/*
+		 * Ohhhkay, shitty approximation time gogo, so we can compute (and waste
+		 * a ton of CPU cycles doing it, exactly how long it will take to clear
+		 * the buffer, subtract that, from the process time, then fill the
+		 * buffer, etc, etc. Alternatively, we can play this game, we don't
+		 * worry about the state now, and we let the buffer state be how it is,
+		 * don't worry about it. And each time will fill the buffer as full as
+		 * we can. This works out correctly in a steady state. Again, check
+		 * this, and in the non-steady state case we lag behind by one MRAI. Not
+		 * sure how much that will change things in the long run, but it is a
+		 * quite larger perf improvement.
+		 */
+		long memSpace = 0;
+		LinkedList<BGPUpdate> queueToListGo = (LinkedList<BGPUpdate>)this.incUpdateQueues.get(sendingASN);
+		for(BGPUpdate tUpdate: queueToListGo){
+			memSpace += tUpdate.getWireSize();
+		}
+		memSpace = BGPSpeaker.QUEUE_SIZE - memSpace;
+
+		//TODO determine if we're bouncing between a zero window and not
+		return new RouterSendCapacity(fractionOfTimeMine, memSpace, false);
+	}
+
 	/**
 	 * Currently exposed interface which triggers an expiration of THIS ROUTER'S
 	 * MRAI timer, resulting in updates being sent to this router's peers.
@@ -174,11 +225,16 @@ public class BGPSpeaker {
 
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
+				RouterSendCapacity sendCap = this.peers.get(tPeer)
+						.computeSendCap(this.myAS.getASN());
 				HashSet<Integer> handled = new HashSet<Integer>();
 
 				for (int tDest : this.dirtyDests.get(tPeer)) {
 					handled.add(tDest);
-					if (!this.sendUpdate(tDest, tPeer, currentTime)) {
+					this.sendUpdate(tDest, tPeer, currentTime);
+
+					if (sendCap.getCPUTime() == 0
+							&& sendCap.getFreeBufferSpace() <= 0) {
 						break;
 					}
 				}
@@ -218,10 +274,10 @@ public class BGPSpeaker {
 	public boolean advPath(BGPRoute incRoute, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute
 				.getNextHop(this.getASN()));
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
-				.calcTotalRuntime(incRoute.getSize())));
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute,
+				this.calcTotalRuntime(incRoute.getSize())));
 
-		//TODO base this off of route size
+		// TODO base this off of route size
 		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
 	}
 
@@ -237,8 +293,8 @@ public class BGPSpeaker {
 	public boolean selfInstallPath(BGPRoute incRoute, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues
 				.get(this.myAS.getASN());
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
-				.calcTotalRuntime(incRoute.getSize())));
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute,
+				this.calcTotalRuntime(incRoute.getSize())));
 
 		return true;
 	}
@@ -254,14 +310,14 @@ public class BGPSpeaker {
 	 */
 	public boolean withdrawPath(int withdrawingAS, int dest, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
-		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
-				.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest)
-						.getSize())));
+		incQueue.add(BGPUpdate.buildWithdrawal(
+				dest,
+				withdrawingAS,
+				this.calcTotalRuntime(this.adjInRib.get(withdrawingAS)
+						.get(dest).getSize())));
 
 		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
 	}
-	
-	
 
 	private long calcTotalRuntime(int size) {
 		return (long) size * 2;
@@ -315,8 +371,9 @@ public class BGPSpeaker {
 				continue;
 			}
 
-			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(
-					numberRunning), smallestLeft);
+			smallestLeft = Math.min(
+					tQueue.peek().estTimeToComplete(numberRunning),
+					smallestLeft);
 		}
 
 		return smallestLeft;

@@ -91,7 +91,7 @@ public class BGPMaster implements Runnable {
 		}
 
 		try {
-			//TODO make this file name configurable
+			// TODO make this file name configurable
 			this.logMaster = new SimLogger("test", this.topo);
 			this.logMaster.setupStatPush();
 		} catch (IOException e) {
@@ -162,11 +162,21 @@ public class BGPMaster implements Runnable {
 	public void reportWorkDone() {
 		this.completeSem.release();
 	}
-	
-	public SimLogger getLoggingHook(){
+
+	public SimLogger getLoggingHook() {
 		return this.logMaster;
 	}
 
+	/**
+	 * Function that actually drives the worker threads. This will run in a
+	 * "round" based fashion. One round will deal with the MRAI expire, i.e. the
+	 * sending of updates. The round after will deal with the processing of said
+	 * updates. This will go back and forth.
+	 * 
+	 * @param mraiRound
+	 * @param runNextRound
+	 * @param currentTime
+	 */
 	private void spinUpWork(boolean mraiRound, HashSet<Integer> runNextRound,
 			long currentTime) {
 
@@ -181,7 +191,11 @@ public class BGPMaster implements Runnable {
 			 * remove all MRAI pops
 			 */
 			synchronized (this.mraiQueue) {
-				//FIXME going to make these unique, remove collision logic
+				/*
+				 * This has logic to deal with multiple routers having MRAIs at
+				 * the same time, shouldn't happen, but the logic is here if
+				 * needed in the future again
+				 */
 				while (!this.mraiQueue.isEmpty()
 						&& this.mraiQueue.peek().getEventTime() == currentTime) {
 					MRAIFireEvent tEvent = this.mraiQueue.poll();
@@ -194,7 +208,6 @@ public class BGPMaster implements Runnable {
 							.getNeighbors());
 					runNextRound.add(tEvent.getOwner().getASN());
 
-					//FIXME this needs to be run in a single thread first!!!!!
 					this.readyToRunQueue.add(tEvent);
 					this.workSem.release();
 					this.workOut++;
