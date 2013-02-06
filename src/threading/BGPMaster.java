@@ -112,6 +112,7 @@ public class BGPMaster implements Runnable {
 		boolean stillRunning = true;
 		boolean mraiRound = false;
 		long currentTime = 0;
+		long nextLogTime = this.logMaster.getNextLogTime();
 		long bgpStartTime = System.currentTimeMillis();
 		System.out.println("Starting up the BGP processing.");
 
@@ -119,9 +120,55 @@ public class BGPMaster implements Runnable {
 
 		while (stillRunning) {
 			if (mraiRound) {
-				currentTime = this.mraiQueue.peek().getEventTime();
+				long nextMRAI = this.mraiQueue.peek().getEventTime();
+				
+				/*
+				 * Time to log, as everyone is ran up to the logging horizon
+				 */
+				if (nextMRAI >= nextLogTime) {
+					/*
+					 * The simulator is up to date up to the logging horizon
+					 */
+					currentTime = nextLogTime;
+
+					/*
+					 * Do the logging and update the logging horizon
+					 */
+					try {
+						this.logMaster.processLogging();
+					} catch (IOException e) {
+						System.err.println("Logging mechanism failed, dying violently!");
+						e.printStackTrace();
+						System.exit(-1);
+					}
+					nextLogTime = this.logMaster.getNextLogTime();
+
+					/*
+					 * We can't process the next MRAI yet, since no one is
+					 * actually there, they are just up to the old logging
+					 * horizon, so let people run past this wall to their next
+					 * MRAI (or concievably the next logging horizon if we're
+					 * doing really tight logging)
+					 */
+					mraiRound = false;
+					runNextRound.clear();
+				} else {
+					currentTime = this.mraiQueue.peek().getEventTime();
+				}
+				
+				/*
+				 * Do our last logging, since nothing is changing
+				 */
+				try {
+					this.logMaster.processLogging();
+				} catch (IOException e) {
+					System.err.println("Logging mechanism failed, dying violently!");
+					e.printStackTrace();
+					System.exit(-1);
+				}
 			}
-			this.spinUpWork(mraiRound, runNextRound, currentTime);
+			
+			this.spinUpWork(mraiRound, runNextRound, currentTime, nextLogTime);
 			mraiRound = !mraiRound;
 
 			try {
@@ -183,9 +230,10 @@ public class BGPMaster implements Runnable {
 	 * @param mraiRound
 	 * @param runNextRound
 	 * @param currentTime
+	 * @param nextLogTime
 	 */
 	private void spinUpWork(boolean mraiRound, HashSet<Integer> runNextRound,
-			long currentTime) {
+			long currentTime, long nextLogTime) {
 
 		if (mraiRound) {
 
@@ -223,24 +271,24 @@ public class BGPMaster implements Runnable {
 
 		} else {
 			/*
-			 * This is an edge case for the FIRST round of the simulator (only
-			 * time this will be true), this gets the opening route(s) into
-			 * people's tables in principle this would work without this I
-			 * think, we would just wait for a MRAI pass, and then start
-			 * processing. Seems like it might fuck up our timing evals though
-			 * since nodes would not start processing their initial updates at
-			 * the same time and there would be a random delay
+			 * This is an edge case for the FIRST round of the simulator or when
+			 * we get done with a logging pass and concievably all nodes need to
+			 * move forward to their next mrai
 			 */
 			if (runNextRound.isEmpty()) {
 				runNextRound.addAll(this.topo.keySet());
 			}
 
 			for (int tASN : runNextRound) {
-				long timeHorizon = this.computeNextAdjMRAI(tASN);
 				/*
-				 * XXX can this ever be not true? adding an exception to test if
-				 * this ever pops up, as this would be bad me thinks (node needs
-				 * to run, but has already run ahead...)
+				 * You're clear to move up to either the next MRAI you'll see or
+				 * the logging horizon, which ever is first obviously
+				 */
+				long timeHorizon = Math.min(this.computeNextAdjMRAI(tASN),
+						nextLogTime);
+				/*
+				 * Sanity check that we have not ran past the window, if we have
+				 * not, then please proceed
 				 */
 				if (timeHorizon > this.asnRunTo.get(tASN)) {
 					this.asnRunTo.put(tASN, timeHorizon);
@@ -249,8 +297,15 @@ public class BGPMaster implements Runnable {
 					this.workSem.release();
 					this.workOut++;
 				} else {
-					throw new RuntimeException(
-							"There is a node ahead of the current time, but it has a processing event!");
+					/*
+					 * If we processed past this window that would be bad, we
+					 * can have already processed up to this time (edge
+					 * condition when logging horizon == mrai)
+					 */
+					if (timeHorizon < this.asnRunTo.get(tASN)) {
+						throw new RuntimeException(
+								"There is a node ahead of the current time, but it has a processing event!");
+					}
 				}
 			}
 		}

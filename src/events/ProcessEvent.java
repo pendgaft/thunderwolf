@@ -14,7 +14,6 @@ public class ProcessEvent extends SimEvent {
 
 	public void handleEvent(SimLogger theLogger) {
 		this.getOwner().runForwardTo(this.getEventTime(), this.endTime);
-		theLogger.reportMemLoad(this.getOwner().getASN(), this.endTime, this.getOwner().memLoad());
 	}
 
 	public boolean equals(Object rhs) {
