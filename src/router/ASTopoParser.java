@@ -62,6 +62,7 @@ public class ASTopoParser {
 		/*
 		 * Parse the cidr count file and use it to create the AS objects
 		 */
+		//TODO looks like the CIDR count is no longer used as we hand out networks in a slightly more complicated/interesting way
 		BufferedReader fBuff = new BufferedReader(new FileReader(cidrCountFile));
 		while (fBuff.ready()) {
 			pollString = fBuff.readLine().trim();

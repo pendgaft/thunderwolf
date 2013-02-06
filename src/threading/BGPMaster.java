@@ -9,6 +9,7 @@ import events.*;
 import router.BGPSpeaker;
 import logging.SimLogger;
 
+//TODO add a flag to fix the time that this runs (killing the simulation at that point even though there still are events
 public class BGPMaster implements Runnable {
 
 	private int workOut;
@@ -20,6 +21,11 @@ public class BGPMaster implements Runnable {
 	private HashMap<Integer, BGPSpeaker> topo;
 
 	private Queue<MRAIFireEvent> mraiQueue;
+
+	/**
+	 * Stores the time up to which an AS's processing has been computed i.e.
+	 * what time this AS thinks it is
+	 */
 	private HashMap<Integer, Long> asnRunTo;
 	private SimLogger logMaster;
 
@@ -42,6 +48,7 @@ public class BGPMaster implements Runnable {
 		 * Give everyone their self network, this will trigger events being
 		 * placed into the sim queue for CPU finished
 		 */
+		// XXX is there a reason we do this now rather than earlier?
 		netSeed.initialSeed();
 
 		/*
@@ -215,18 +222,35 @@ public class BGPMaster implements Runnable {
 			}
 
 		} else {
+			/*
+			 * This is an edge case for the FIRST round of the simulator (only
+			 * time this will be true), this gets the opening route(s) into
+			 * people's tables in principle this would work without this I
+			 * think, we would just wait for a MRAI pass, and then start
+			 * processing. Seems like it might fuck up our timing evals though
+			 * since nodes would not start processing their initial updates at
+			 * the same time and there would be a random delay
+			 */
 			if (runNextRound.isEmpty()) {
 				runNextRound.addAll(this.topo.keySet());
 			}
 
 			for (int tASN : runNextRound) {
 				long timeHorizon = this.computeNextAdjMRAI(tASN);
+				/*
+				 * XXX can this ever be not true? adding an exception to test if
+				 * this ever pops up, as this would be bad me thinks (node needs
+				 * to run, but has already run ahead...)
+				 */
 				if (timeHorizon > this.asnRunTo.get(tASN)) {
 					this.asnRunTo.put(tASN, timeHorizon);
 					this.readyToRunQueue.add(new ProcessEvent(currentTime,
 							timeHorizon, this.topo.get(tASN)));
 					this.workSem.release();
 					this.workOut++;
+				} else {
+					throw new RuntimeException(
+							"There is a node ahead of the current time, but it has a processing event!");
 				}
 			}
 		}

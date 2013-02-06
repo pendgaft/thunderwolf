@@ -7,6 +7,14 @@ import bgp.BGPRoute;
 import router.BGPSpeaker;
 import sim.ThunderWolf;
 
+/**
+ * Gives only one router paths to advertise, you can have any number of them,
+ * and they have 1 cidr a piece. You can configure the AS path length to be
+ * non-empty, but they all have to be the same size however.
+ * 
+ * @author pendgaft
+ * 
+ */
 public class SingleInjector extends NetworkSeeder {
 
 	private int injectingASN;

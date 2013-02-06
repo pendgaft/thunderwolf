@@ -8,6 +8,7 @@ import java.util.*;
  * @author pendgaft
  * 
  */
+//XXX does the dest need to be a "random value" so we can support multiple networks per host?
 public class BGPRoute {
 
 	/**

@@ -41,6 +41,7 @@ public class ThunderWolf {
 		 * Setup network seeder
 		 */
 		NetworkSeeder netSeed = null;
+		//TODO factor this code off to a function for cleanlyness
 		if(args[1].equalsIgnoreCase("even")){
 			netSeed = new EvenSeed(routerMap);
 		} else if(args[1].equalsIgnoreCase("injector")){

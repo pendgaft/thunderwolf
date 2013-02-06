@@ -6,6 +6,13 @@ import bgp.BGPRoute;
 
 import router.BGPSpeaker;
 
+/**
+ * Creates one network for each AS that has 1 CIDR inside it. This is used for
+ * testing purposes for the most part.
+ * 
+ * @author pendgaft
+ * 
+ */
 public class EvenSeed extends NetworkSeeder {
 
 	public EvenSeed(HashMap<Integer, BGPSpeaker> activeTopo) {

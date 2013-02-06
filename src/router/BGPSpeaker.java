@@ -167,7 +167,7 @@ public class BGPSpeaker {
 		recalcBestPath(dest);
 	}
 
-	public RouterSendCapacity computeSendCap(int sendingASN) {		
+	public RouterSendCapacity computeSendCap(int sendingASN) {
 		/*
 		 * XXX so, here is the slight issue/abstraction with this. We don't
 		 * actually take into account queues that will start or finish
@@ -191,8 +191,6 @@ public class BGPSpeaker {
 		fractionOfTimeMine = (long) Math.floor(fractionOfTimeMine
 				/ runningQueues);
 
-		
-		
 		// TODO think on this when you're not on a plane
 		/*
 		 * Ohhhkay, shitty approximation time gogo, so we can compute (and waste
@@ -207,13 +205,14 @@ public class BGPSpeaker {
 		 * quite larger perf improvement.
 		 */
 		long memSpace = 0;
-		LinkedList<BGPUpdate> queueToListGo = (LinkedList<BGPUpdate>)this.incUpdateQueues.get(sendingASN);
-		for(BGPUpdate tUpdate: queueToListGo){
+		LinkedList<BGPUpdate> queueToListGo = (LinkedList<BGPUpdate>) this.incUpdateQueues
+				.get(sendingASN);
+		for (BGPUpdate tUpdate : queueToListGo) {
 			memSpace += tUpdate.getWireSize();
 		}
 		memSpace = BGPSpeaker.QUEUE_SIZE - memSpace;
 
-		//TODO determine if we're bouncing between a zero window and not
+		// TODO determine if we're bouncing between a zero window and not
 		return new RouterSendCapacity(fractionOfTimeMine, memSpace, false);
 	}
 
@@ -319,6 +318,7 @@ public class BGPSpeaker {
 		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
 	}
 
+	
 	private long calcTotalRuntime(int size) {
 		return (long) size * 2;
 	}
@@ -338,11 +338,18 @@ public class BGPSpeaker {
 		while (currentTime < stopTime) {
 			int activeQueues = this.countActiveQueues();
 
+			/*
+			 * Just break out of the loop if we're done
+			 */
 			if (activeQueues == 0) {
 				currentTime = stopTime;
 				break;
 			}
 
+			/*
+			 * Run ahead until we either hit the time horizon or a queue
+			 * finishes
+			 */
 			long testTime = Math.min(this.computeNearestTTC(activeQueues),
 					stopTime - currentTime);
 			this.runQueuesAhead(testTime, activeQueues);
@@ -381,10 +388,16 @@ public class BGPSpeaker {
 
 	private void runQueuesAhead(long timeDelta, int activeQueues) {
 		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			/*
+			 * Don't run empty queues obvi
+			 */
 			if (tQueue.isEmpty()) {
 				continue;
 			}
 
+			/*
+			 * Advance non-empty queues, if they finish handle the advertise at the head
+			 */
 			if (tQueue.peek().runTimeAhead(timeDelta, activeQueues)) {
 				this.handleAdvertisement(tQueue);
 			}
