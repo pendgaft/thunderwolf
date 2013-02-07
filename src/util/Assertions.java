@@ -258,6 +258,29 @@ public class Assertions {
 	}
 
 	/**
+	 * Allows the generic recording of failed assertions that happen outside the
+	 * assertion object (perhaps in prepping responses for testing). You won't
+	 * get values for this, so make that user error message meaningful!
+	 * 
+	 * @param passed
+	 *            - true if the assertion passed, false if failed
+	 * @param errMsg
+	 *            - a user error message, this CAN be null if you want, but that
+	 *            would make this the most useless error message EVAR
+	 */
+	public void recordOutsideAssertion(boolean passed, String errMsg) {
+		this.totalTestsRan++;
+
+		if (passed) {
+			this.totalTestsPassed++;
+		} else {
+			this.totalTestsFailed++;
+			this.failureMessages.add(this.buildErrMessage("Outside assertion",
+					"unknown", "unknown", errMsg));
+		}
+	}
+
+	/**
 	 * Helper method to build an error message when an assertion fails. Done to
 	 * use StringBuilders and make code less clusterfuck.
 	 * 
@@ -302,6 +325,22 @@ public class Assertions {
 	public static Integer[] arrayHelperInt(List<Integer> intList) {
 		Integer[] tmp = new Integer[0];
 		return intList.toArray(tmp);
+	}
+
+	/**
+	 * Helper function to solve Java's fucked up understanding of primatives vs
+	 * objects..
+	 * 
+	 * @param primArray
+	 *            an array of ints
+	 * @return OMG an array of Integers
+	 */
+	public static Integer[] autoBoxIntArray(int[] primArray) {
+		Integer[] objArray = new Integer[primArray.length];
+		for (int counter = 0; counter < primArray.length; counter++) {
+			objArray[counter] = primArray[counter];
+		}
+		return objArray;
 	}
 
 	/**

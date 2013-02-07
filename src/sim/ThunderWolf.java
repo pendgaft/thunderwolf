@@ -48,6 +48,7 @@ public class ThunderWolf {
 		me.runSimulation();
 	}
 
+	@SuppressWarnings("unused")
 	private ThunderWolf() {
 		/*
 		 * Hidden since default constructor makes no sense

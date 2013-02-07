@@ -193,4 +193,12 @@ public class BGPRoute {
 	public int hashCode() {
 		return this.toString().hashCode();
 	}
+	
+	/**
+	 * This should be used for TESTING ONLY!!!!
+	 * @return
+	 */
+	public List<Integer> fetchRawPath(){
+		return this.path;
+	}
 }
