@@ -13,6 +13,8 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 
 	public static final int ROUTER_PROCESS = 1;
 	public static final int MRAI_EVENT = 2;
+	
+	public static final long SECOND_MULTIPLIER = 1000;
 
 	public SimEvent(long eTime, int eType, BGPSpeaker owner) {
 		this.eventTime = eTime;

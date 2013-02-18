@@ -5,6 +5,7 @@ import java.util.*;
 import router.data.RouterSendCapacity;
 import threading.BGPMaster;
 import events.MRAIFireEvent;
+import events.SimEvent;
 import bgp.BGPRoute;
 import bgp.BGPUpdate;
 
@@ -36,7 +37,7 @@ public class BGPSpeaker {
 	private BGPMaster simMaster;
 
 	private static boolean DEBUG = false;
-	private static final long MRAI_LENGTH = 30000;
+	private static final long MRAI_LENGTH = 30 * SimEvent.SECOND_MULTIPLIER;
 	private static final long QUEUE_SIZE = 10000;
 
 	/**
@@ -320,7 +321,8 @@ public class BGPSpeaker {
 
 	
 	private long calcTotalRuntime(int size) {
-		return (long) size * 2;
+		return 8;
+		//return (long) size * 2;
 	}
 
 	public void runForwardTo(long startTime, long stopTime) {
