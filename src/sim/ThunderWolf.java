@@ -78,7 +78,10 @@ public class ThunderWolf {
 		if (myMode == Mode.EVEN) {
 			this.netSeeder = new EvenSeed(routerMap);
 		} else if (myMode == Mode.INJECTOR) {
-			this.netSeeder = new SingleInjector(routerMap, 1, 350000, 10);
+			//this.netSeeder = new SingleInjector(routerMap, 1, 50000, 10);
+			HashSet<Integer> targetSet = new HashSet<Integer>();
+			targetSet.add(3);
+			this.netSeeder = new MultiInjector(routerMap, targetSet, 50000, 10);
 		} else {
 			throw new RuntimeException(
 					"Passed a mode to ThunderWolf Constructor that we do not know how to seed!");

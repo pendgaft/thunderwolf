@@ -157,9 +157,9 @@ public class BGPUpdate {
 		return this.completedRuntime - this.totalRuntime >= 0;
 	}
 
-	public long estTimeToComplete(int numberRunning) {
+	public long estTimeToComplete(int numberRunning, double overheadPenalty) {
 		long timeLeft = this.totalRuntime - this.completedRuntime;
-		return timeLeft * numberRunning;
+		return Math.round(timeLeft * numberRunning * overheadPenalty);
 	}
 
 	/**

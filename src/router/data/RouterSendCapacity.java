@@ -35,7 +35,7 @@ public class RouterSendCapacity {
 			/*
 			 * ghetto hack to compute the base TTC
 			 */
-			long routeTTC = update.estTimeToComplete(1);
+			long routeTTC = update.estTimeToComplete(1, 1.0);
 			if (this.cpuTimeGiven > routeTTC) {
 				this.cpuTimeGiven -= routeTTC;
 			} else {

@@ -321,8 +321,7 @@ public class BGPSpeaker {
 
 	
 	private long calcTotalRuntime(int size) {
-		return 8;
-		//return (long) size * 2;
+		return 2 * SimEvent.SECOND_MULTIPLIER / 1000;
 	}
 
 	public void runForwardTo(long startTime, long stopTime) {
@@ -375,13 +374,21 @@ public class BGPSpeaker {
 	private long computeNearestTTC(int numberRunning) {
 		long smallestLeft = Long.MAX_VALUE;
 
+		/*
+		 * We can have an overhead penalty if we're advertising at the same time
+		 */
+		double overhead = 1.0;
+		if(!this.dirtyDests.isEmpty()){
+			overhead = 1.5;
+		}
+		
 		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
 			if (tQueue.isEmpty()) {
 				continue;
 			}
 
 			smallestLeft = Math.min(
-					tQueue.peek().estTimeToComplete(numberRunning),
+					tQueue.peek().estTimeToComplete(numberRunning, overhead),
 					smallestLeft);
 		}
 

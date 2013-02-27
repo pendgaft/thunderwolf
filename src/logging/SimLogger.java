@@ -14,8 +14,7 @@ public class SimLogger {
 	private HashMap<Integer, BGPSpeaker> topology;
 
 	private long nextLoggingHorizon;
-	//TODO make this configurable in the future
-	public static final long LOG_EPOCH = 120000;
+	public static final long LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 5;
 
 	private static final String LOG_DIR = "logs/";
 	private static final String MEM_STUB = "-mem.csv";
