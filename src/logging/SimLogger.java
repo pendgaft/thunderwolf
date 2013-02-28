@@ -3,7 +3,10 @@ package logging;
 import java.io.*;
 import java.util.*;
 
+import events.SimEvent;
+
 import router.BGPSpeaker;
+import util.Stats;
 
 public class SimLogger {
 
@@ -14,7 +17,7 @@ public class SimLogger {
 	private HashMap<Integer, BGPSpeaker> topology;
 
 	private long nextLoggingHorizon;
-	public static final long LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 5;
+	public static final long LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 600;
 
 	private static final String LOG_DIR = "logs/";
 	private static final String MEM_STUB = "-mem.csv";
@@ -87,6 +90,11 @@ public class SimLogger {
 						1000000.0);
 		this.writeToLog(tableSize, this.nextLoggingHorizon, this.tableSizeOut,
 				1000.0);
+		
+		/*
+		 * Spit some stuff to the console
+		 */
+		this.printToConsole();
 
 		/*
 		 * Last thing, since we're done w/ this window, scoot the time horizon
@@ -178,5 +186,46 @@ public class SimLogger {
 		 * Last, terminate the line
 		 */
 		outputStream.newLine();
+	}
+	
+	private void printToConsole(){
+		String timeStr = "seconds";
+		long timeVal = this.nextLoggingHorizon / SimEvent.SECOND_MULTIPLIER;
+		if(timeVal > 60){
+			timeVal = timeVal / 60;
+			timeStr = "minutes";
+		}
+		if(timeVal > 60){
+			timeVal = timeVal / 60;
+			timeStr = "hours";
+		}
+		if(timeVal > 24){
+			timeVal = timeVal / 24;
+			timeStr = "days";
+		}
+		
+		/*
+		 * Print about of simulated time that has passed.
+		 */
+		StringBuilder strBuild = new StringBuilder();
+		strBuild.append("Sim done through: " );
+		strBuild.append(Long.toString(timeVal));
+		strBuild.append(" ");
+		strBuild.append(timeStr);
+		strBuild.append("   ");
+		
+		List<Long> stillToGo = new LinkedList<Long>();
+		for(BGPSpeaker tRouter: this.topology.values()){
+			stillToGo.add(tRouter.getWorkRemaining());
+		}
+		double avg = Stats.mean(stillToGo);
+		double med = Stats.median(stillToGo);
+		
+		strBuild.append("avg work to do: ");
+		strBuild.append(Double.toString(avg));
+		strBuild.append(" med work to do: " );
+		strBuild.append(Double.toString(med));
+		
+		System.out.println(strBuild.toString());
 	}
 }

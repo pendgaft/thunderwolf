@@ -583,6 +583,16 @@ public class BGPSpeaker {
 
 		return true;
 	}
+	
+	public long getWorkRemaining(){
+		long updatesPending = 0;
+		
+		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			updatesPending += tQueue.size();
+		}
+		
+		return updatesPending;
+	}
 
 	/**
 	 * Hash code is simply the ASN (yay unique)
