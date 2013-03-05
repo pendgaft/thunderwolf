@@ -1,19 +1,22 @@
 package threading;
 
+import java.io.IOException;
 import java.util.*;
+
+import router.AS;
+import router.ASTopoParser;
 import router.BGPSpeaker;
+import util.Assertions;
 
 public class WorkGraph {
 
 	private HashSet<WorkNode> topLvlNodes;
-	private HashSet<WorkNode> allNodes;
-	private HashSet<WorkNode> leafNodes;
+	private List<WorkNode> allNodes;
 
 	public WorkGraph(HashMap<Integer, BGPSpeaker> topoMap) {
 
 		this.topLvlNodes = new HashSet<WorkNode>();
-		this.allNodes = new HashSet<WorkNode>();
-		this.leafNodes = new HashSet<WorkNode>();
+		this.allNodes = new LinkedList<WorkNode>();
 
 		/*
 		 * Line the ASes up in order of MRAI fire and walk through building
@@ -26,16 +29,14 @@ public class WorkGraph {
 					.getNeighbors();
 			WorkNode newNode = new WorkNode(currAS, currNeighbors);
 
-			List<WorkNode> needToVisit = new LinkedList<WorkNode>();
 			Set<WorkNode> hasVisited = new HashSet<WorkNode>();
-			needToVisit.addAll(this.leafNodes);
 
 			/*
 			 * Consider all nodes, finding dependencies, we can skip some tests,
 			 * as I'm dependent on all of my parent's parents
 			 */
-			while (hasVisited.size() != this.allNodes.size()) {
-				WorkNode currNode = needToVisit.remove(0);
+			for(int innerCounter = this.allNodes.size() - 1; innerCounter >= 0; innerCounter--){
+				WorkNode currNode = this.allNodes.get(innerCounter);
 				
 				if(hasVisited.contains(currNode)){
 					continue;
@@ -49,9 +50,6 @@ public class WorkGraph {
 						|| currNode.contains(currNeighbors)) {
 					newNode.addParent(currNode);
 					currNode.addChild(newNode);
-					if (this.leafNodes.contains(currNode)) {
-						this.leafNodes.remove(currNode);
-					}
 
 					/*
 					 * Time to pull parents out of this mess since we're
@@ -67,7 +65,6 @@ public class WorkGraph {
 			 * Add references to the new node in the master data structure
 			 */
 			this.allNodes.add(newNode);
-			this.leafNodes.add(newNode);
 		}
 	}
 
@@ -115,5 +112,31 @@ public class WorkGraph {
 		}
 		
 		return parents;
+	}
+	
+	public static void main(String args[]) throws IOException{
+		HashMap<Integer, BGPSpeaker> topoMap = new HashMap<Integer, BGPSpeaker>();
+		HashMap<Integer, AS> asMap = new HashMap<Integer, AS>();
+		for(int counter = 1; counter < 9; counter++){
+			asMap.put(counter, new AS(counter, 1));
+		}
+		asMap.get(1).addRelation(asMap.get(6), 1);
+		asMap.get(1).addRelation(asMap.get(4), -1);
+		asMap.get(2).addRelation(asMap.get(8), 1);
+		asMap.get(3).addRelation(asMap.get(6), -1);
+		asMap.get(3).addRelation(asMap.get(7), -1);
+		asMap.get(4).addRelation(asMap.get(7), 1);
+		asMap.get(4).addRelation(asMap.get(8), -1);
+		asMap.get(5).addRelation(asMap.get(8), -1);
+		
+		for(int counter = 1; counter < 9; counter++){
+			topoMap.put(counter, new BGPSpeaker(asMap.get(counter), topoMap));
+			topoMap.get(counter).setOpeningMRAI(counter);
+		}
+		
+		WorkGraph theGraph = new WorkGraph(topoMap);
+		for(WorkNode tNode: theGraph.allNodes){
+			System.out.println(tNode.toString());
+		}
 	}
 }

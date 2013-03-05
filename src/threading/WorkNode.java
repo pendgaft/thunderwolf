@@ -59,4 +59,20 @@ public class WorkNode {
 		return this.ran;
 	}
 
+	public int getAdvertiser(){
+		return this.advertiser;
+	}
+	
+	public String toString(){
+		String out = "" + this.advertiser + " parents:";
+		for(WorkNode tParent: this.parents){
+			out += " " + tParent.advertiser;
+		}
+		out += " children:";
+		for(WorkNode tChild: this.children){
+			out += " " + tChild.advertiser;
+		}
+		
+		return out;
+	}
 }
