@@ -12,6 +12,7 @@ public class WorkGraph {
 
 	private HashSet<WorkNode> topLvlNodes;
 	private List<WorkNode> allNodes;
+	private List<Integer> mraiOrderList;
 
 	public WorkGraph(HashMap<Integer, BGPSpeaker> topoMap) {
 
@@ -22,9 +23,9 @@ public class WorkGraph {
 		 * Line the ASes up in order of MRAI fire and walk through building
 		 * nodes
 		 */
-		List<Integer> mraiOrderList = this.buildMRAIOrder(topoMap);
-		for (int counter = 0; counter < mraiOrderList.size(); counter++) {
-			int currAS = mraiOrderList.get(counter);
+		this.mraiOrderList = this.buildMRAIOrder(topoMap);
+		for (int counter = 0; counter < this.mraiOrderList.size(); counter++) {
+			int currAS = this.mraiOrderList.get(counter);
 			Set<Integer> currNeighbors = topoMap.get(currAS).getASObject()
 					.getNeighbors();
 			WorkNode newNode = new WorkNode(currAS, currNeighbors);
@@ -65,6 +66,20 @@ public class WorkGraph {
 			 * Add references to the new node in the master data structure
 			 */
 			this.allNodes.add(newNode);
+		}
+	}
+	
+	/**
+	 * Called into first to get the work nodes that can be spun up at each pass
+	 * @return
+	 */
+	public Set<WorkNode> getRoots(){
+		return this.topLvlNodes;
+	}
+	
+	public void resetDoneStatus(){
+		for(WorkNode tNode: this.allNodes){
+			tNode.resetRan();
 		}
 	}
 

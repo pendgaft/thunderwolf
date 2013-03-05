@@ -12,13 +12,18 @@ import logging.SimLogger;
 //TODO add a flag to fix the time that this runs (killing the simulation at that point even though there still are events
 public class BGPMaster implements Runnable {
 
-	private int workOut;
+	
 	private Semaphore workSem;
+	
+	private int workNodeOut;
 	private Semaphore completeSem;
+	private ConcurrentLinkedQueue<WorkNode> completedNodes;
+	
 
 	private ConcurrentLinkedQueue<SimEvent> readyToRunQueue;
 
 	private HashMap<Integer, BGPSpeaker> topo;
+	private WorkGraph workGraph;
 
 	private Queue<MRAIFireEvent> mraiQueue;
 
@@ -79,13 +84,19 @@ public class BGPMaster implements Runnable {
 	}
 
 	public BGPMaster(HashMap<Integer, BGPSpeaker> routingTopo) {
-		this.workOut = 0;
+		
 		this.workSem = new Semaphore(0);
-		this.completeSem = new Semaphore(0);
+		
 		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
 		this.mraiQueue = new PriorityQueue<MRAIFireEvent>();
 
 		this.topo = routingTopo;
+		this.workGraph = new WorkGraph(this.topo);
+		
+		this.workNodeOut = 0;
+		this.completeSem = new Semaphore(0);
+		this.completedNodes = new ConcurrentLinkedQueue<WorkNode>();
+		
 		/*
 		 * Give each BGP speaker a reference to the BGPMaster object (needed to
 		 * hand events to the sim)
@@ -98,6 +109,10 @@ public class BGPMaster implements Runnable {
 			this.asnRunTo.put(tASN, (long) 0);
 		}
 
+		/*
+		 * Build logging mechanisms, these are done here since we need to freeze
+		 * the simulator to actually do the logging.
+		 */
 		try {
 			// TODO make this file name configurable
 			this.logMaster = new SimLogger("test", this.topo);
@@ -108,8 +123,58 @@ public class BGPMaster implements Runnable {
 			System.exit(2);
 		}
 	}
+	
+	public void run(){
+		boolean stillRunning = true;
+		
+		
+		/*
+		 * Do Run-up to next MRAI
+		 */
+		//TODO actually run everyone up to the first MRAI NEAR THEM
+		
+		while(stillRunning){
+			
+			/*
+			 * Fetch the nodes we start w/ and start them
+			 */
+			Set<WorkNode> roots = this.workGraph.getRoots();
+			for(WorkNode tNode: roots){
+				this.workNodeOut++;
+				//TODO actually spin up work
+			}
+			
+			while(this.workNodeOut > 0){
+				try {
+					this.completeSem.acquire();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+					System.exit(2);
+				}
+				
+				WorkNode doneNode = this.completedNodes.poll();
+				this.workNodeOut--;
+				Set<WorkNode> goodToGo = doneNode.toggleRan();
+				for(WorkNode tNode: goodToGo){
+					this.workNodeOut++;
+					//TODO actually spin up work
+				}
+			}
+			
+			/*
+			 * Evaluate if we're still running at the end of a round
+			 */
+			stillRunning = false;
+			for(BGPSpeaker tRouter: this.topo.values()){
+				if(!tRouter.isDone()){
+					stillRunning = true;
+					break;
+				}
+			}
+		}
+	}
 
-	public void run() {
+	public void run_old() {
 		boolean stillRunning = true;
 		boolean mraiRound = false;
 		long currentTime = 0;
@@ -122,7 +187,7 @@ public class BGPMaster implements Runnable {
 		while (stillRunning) {
 			if (mraiRound) {
 				long nextMRAI = this.mraiQueue.peek().getEventTime();
-				
+
 				/*
 				 * Time to log, as everyone is ran up to the logging horizon
 				 */
@@ -138,7 +203,8 @@ public class BGPMaster implements Runnable {
 					try {
 						this.logMaster.processLogging();
 					} catch (IOException e) {
-						System.err.println("Logging mechanism failed, dying violently!");
+						System.err
+								.println("Logging mechanism failed, dying violently!");
 						e.printStackTrace();
 						System.exit(-1);
 					}
@@ -156,19 +222,20 @@ public class BGPMaster implements Runnable {
 				} else {
 					currentTime = this.mraiQueue.peek().getEventTime();
 				}
-				
+
 				/*
 				 * Do our last logging, since nothing is changing
 				 */
 				try {
 					this.logMaster.processLogging();
 				} catch (IOException e) {
-					System.err.println("Logging mechanism failed, dying violently!");
+					System.err
+							.println("Logging mechanism failed, dying violently!");
 					e.printStackTrace();
 					System.exit(-1);
 				}
 			}
-			
+
 			this.spinUpWork(mraiRound, runNextRound, currentTime, nextLogTime);
 			mraiRound = !mraiRound;
 
@@ -266,7 +333,7 @@ public class BGPMaster implements Runnable {
 
 					this.readyToRunQueue.add(tEvent);
 					this.workSem.release();
-					this.workOut++;
+					this.workNodeOut++;
 				}
 			}
 
@@ -296,7 +363,7 @@ public class BGPMaster implements Runnable {
 					this.readyToRunQueue.add(new ProcessEvent(currentTime,
 							timeHorizon, this.topo.get(tASN)));
 					this.workSem.release();
-					this.workOut++;
+					this.workNodeOut++;
 				} else {
 					/*
 					 * If we processed past this window that would be bad, we
@@ -313,10 +380,10 @@ public class BGPMaster implements Runnable {
 	}
 
 	public void wall() throws InterruptedException {
-		for (int counter = 0; counter < this.workOut; counter++) {
+		for (int counter = 0; counter < this.workNodeOut; counter++) {
 			this.completeSem.acquire();
 		}
-		this.workOut = 0;
+		this.workNodeOut = 0;
 	}
 
 	private long computeNextAdjMRAI(int asn) {

@@ -46,9 +46,18 @@ public class WorkNode {
 	public boolean contains(int value){
 		return this.adjacentAS.contains(value) || this.advertiser == value;
 	}
-	
-	public void toggleRan(){
+	//FIXME holy shit this needs some locking protection!
+	public Set<WorkNode> toggleRan(){
 		this.ran = true;
+		
+		Set<WorkNode> readyToGo = new HashSet<WorkNode>();
+		for(WorkNode tChild: this.children){
+			if(tChild.isReady()){
+				readyToGo.add(tChild);
+			}
+		}
+		
+		return readyToGo;
 	}
 	
 	public void resetRan(){
@@ -57,6 +66,15 @@ public class WorkNode {
 	
 	public boolean hasRan(){
 		return this.ran;
+	}
+	
+	public boolean isReady(){
+		for(WorkNode tParent: this.parents){
+			if(!tParent.hasRan()){
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public int getAdvertiser(){
