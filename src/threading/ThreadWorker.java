@@ -21,8 +21,10 @@ public class ThreadWorker implements Runnable {
 				 * Fetch work from master, do it, report back
 				 */
 				SimEvent task = this.workSource.getWork();
+				//System.out.println("Pulled: "  + task.toString() + " my id " + this.myID);
 				task.handleEvent(this.workSource.getLoggingHook());
 				this.workSource.reportWorkDone(task);
+				//System.out.println("Returned: "  + task.toString() + " my id " + this.myID);
 			}
 		} catch (InterruptedException e) {
 			System.out.println("Slave thread dying.");

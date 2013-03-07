@@ -66,6 +66,9 @@ public class WorkGraph {
 			 * Add references to the new node in the master data structure
 			 */
 			this.allNodes.add(newNode);
+			if(newNode.getParents().size() == 0){
+				this.topLvlNodes.add(newNode);
+			}
 		}
 	}
 	
@@ -157,5 +160,14 @@ public class WorkGraph {
 		for(WorkNode tNode: theGraph.allNodes){
 			System.out.println(tNode.toString());
 		}
+	}
+	
+	public String toString(){
+		StringBuilder strBuild = new StringBuilder();
+		for(WorkNode tNode: this.allNodes){
+			strBuild.append((tNode.toString()));
+			strBuild.append("\n");
+		}
+		return strBuild.toString();
 	}
 }

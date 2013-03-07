@@ -46,4 +46,19 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 			return 1;
 		}
 	}
+	
+	public String toString(){
+		StringBuilder strBuilder = new StringBuilder();
+		strBuilder.append("Event type: " );
+		
+		if(this.eventType == SimEvent.MRAI_EVENT){
+			strBuilder.append("MRAI");
+		} else if(this.eventType == SimEvent.ROUTER_PROCESS){
+			strBuilder.append("Process");
+		}
+		
+		strBuilder.append(" Owner: ");
+		strBuilder.append(Integer.toString(this.myOwner.getASN()));
+		return strBuilder.toString();
+	}
 }

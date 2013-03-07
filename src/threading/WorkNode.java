@@ -11,6 +11,7 @@ public class WorkNode {
 	private Set<WorkNode> parents;
 	private Set<WorkNode> children;
 	private boolean ran;
+	private boolean reportedRan;
 	
 	public WorkNode(int adv, Set<Integer> adjacent){
 		this.advertiser = adv;
@@ -47,7 +48,7 @@ public class WorkNode {
 	public boolean contains(int value){
 		return this.adjacentAS.contains(value) || this.advertiser == value;
 	}
-	//FIXME holy shit this needs some locking protection!
+
 	public Set<WorkNode> toggleRan(){
 		this.ran = true;
 		
@@ -63,6 +64,7 @@ public class WorkNode {
 	
 	public void resetRan(){
 		this.ran = false;
+		this.reportedRan = false;
 		this.outstandingSubtasks = this.adjacentAS.size() + 1;
 	}
 	
@@ -75,12 +77,18 @@ public class WorkNode {
 		return this.ran;
 	}
 	
-	public boolean isReady(){
+	public synchronized boolean isReady(){
+		if(this.reportedRan){
+			return false;
+		}
+		
 		for(WorkNode tParent: this.parents){
 			if(!tParent.hasRan()){
 				return false;
 			}
 		}
+		
+		this.reportedRan = true;
 		return true;
 	}
 
