@@ -82,6 +82,10 @@ public class WorkGraph {
 			tNode.resetRan();
 		}
 	}
+	
+	public int size(){
+		return this.allNodes.size();
+	}
 
 	private List<Integer> buildMRAIOrder(HashMap<Integer, BGPSpeaker> topo) {
 		List<Integer> outList = new ArrayList<Integer>();

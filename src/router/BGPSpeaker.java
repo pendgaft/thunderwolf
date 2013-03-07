@@ -249,10 +249,8 @@ public class BGPSpeaker {
 		}
 
 		/*
-		 * Push in the next MRAI, right now everybody is using the same one
+		 * Update the MRAI time
 		 */
-		this.simMaster.addMRAIFire(new MRAIFireEvent(currentTime
-				+ BGPSpeaker.MRAI_LENGTH, this));
 		this.nextMRAI = currentTime + BGPSpeaker.MRAI_LENGTH;
 	}
 
@@ -274,8 +272,8 @@ public class BGPSpeaker {
 	public boolean advPath(BGPRoute incRoute, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute
 				.getNextHop(this.getASN()));
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute,
-				this.calcTotalRuntime(incRoute.getSize())));
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
+				.calcTotalRuntime(incRoute.getSize())));
 
 		// TODO base this off of route size
 		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
@@ -293,8 +291,8 @@ public class BGPSpeaker {
 	public boolean selfInstallPath(BGPRoute incRoute, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues
 				.get(this.myAS.getASN());
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute,
-				this.calcTotalRuntime(incRoute.getSize())));
+		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this
+				.calcTotalRuntime(incRoute.getSize())));
 
 		return true;
 	}
@@ -310,16 +308,13 @@ public class BGPSpeaker {
 	 */
 	public boolean withdrawPath(int withdrawingAS, int dest, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
-		incQueue.add(BGPUpdate.buildWithdrawal(
-				dest,
-				withdrawingAS,
-				this.calcTotalRuntime(this.adjInRib.get(withdrawingAS)
-						.get(dest).getSize())));
+		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this
+				.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest)
+						.getSize())));
 
 		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
 	}
 
-	
 	private long calcTotalRuntime(int size) {
 		return 2 * SimEvent.SECOND_MULTIPLIER / 1000;
 	}
@@ -378,18 +373,17 @@ public class BGPSpeaker {
 		 * We can have an overhead penalty if we're advertising at the same time
 		 */
 		double overhead = 1.0;
-		if(!this.dirtyDests.isEmpty()){
+		if (!this.dirtyDests.isEmpty()) {
 			overhead = 1.5;
 		}
-		
+
 		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
 			if (tQueue.isEmpty()) {
 				continue;
 			}
 
-			smallestLeft = Math.min(
-					tQueue.peek().estTimeToComplete(numberRunning, overhead),
-					smallestLeft);
+			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(
+					numberRunning, overhead), smallestLeft);
 		}
 
 		return smallestLeft;
@@ -405,7 +399,8 @@ public class BGPSpeaker {
 			}
 
 			/*
-			 * Advance non-empty queues, if they finish handle the advertise at the head
+			 * Advance non-empty queues, if they finish handle the advertise at
+			 * the head
 			 */
 			if (tQueue.peek().runTimeAhead(timeDelta, activeQueues)) {
 				this.handleAdvertisement(tQueue);
@@ -583,14 +578,14 @@ public class BGPSpeaker {
 
 		return true;
 	}
-	
-	public long getWorkRemaining(){
+
+	public long getWorkRemaining() {
 		long updatesPending = 0;
-		
+
 		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
 			updatesPending += tQueue.size();
 		}
-		
+
 		return updatesPending;
 	}
 

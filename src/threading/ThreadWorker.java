@@ -22,7 +22,7 @@ public class ThreadWorker implements Runnable {
 				 */
 				SimEvent task = this.workSource.getWork();
 				task.handleEvent(this.workSource.getLoggingHook());
-				this.workSource.reportWorkDone();
+				this.workSource.reportWorkDone(task);
 			}
 		} catch (InterruptedException e) {
 			System.out.println("Slave thread dying.");

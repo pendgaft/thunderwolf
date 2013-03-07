@@ -12,20 +12,27 @@ import logging.SimLogger;
 //TODO add a flag to fix the time that this runs (killing the simulation at that point even though there still are events
 public class BGPMaster implements Runnable {
 
-	
-	private Semaphore workSem;
-	
-	private int workNodeOut;
-	private Semaphore completeSem;
+	/*
+	 * These guys are for individual event handling w/ worker threads
+	 */
+	private int taskOut;
+	private Semaphore taskSem;
+	private Semaphore taskCompleteSem;
+
+	/*
+	 * These guys are for work nodes handed out (task groupings)
+	 */
+	private Semaphore workCompleteSem;
 	private ConcurrentLinkedQueue<WorkNode> completedNodes;
-	
 
 	private ConcurrentLinkedQueue<SimEvent> readyToRunQueue;
 
 	private HashMap<Integer, BGPSpeaker> topo;
 	private WorkGraph workGraph;
 
-	private Queue<MRAIFireEvent> mraiQueue;
+	private long nextWall;
+	private boolean runningFromWall;
+	private HashMap<SimEvent, WorkNode> eventToWorkNode;
 
 	/**
 	 * Stores the time up to which an AS's processing has been computed i.e.
@@ -36,8 +43,7 @@ public class BGPMaster implements Runnable {
 
 	private static final int NUM_THREADS = 10;
 
-	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo,
-			NetworkSeeder netSeed) throws IOException {
+	public static void driveSim(HashMap<Integer, BGPSpeaker> routingTopo, NetworkSeeder netSeed) throws IOException {
 		Random rng = new Random();
 
 		/*
@@ -63,7 +69,6 @@ public class BGPMaster implements Runnable {
 			long jitter = rng.nextLong() % (30 * SimEvent.SECOND_MULTIPLIER);
 			long mraiValue = 30 * SimEvent.SECOND_MULTIPLIER + jitter;
 			tAS.setOpeningMRAI(mraiValue);
-			self.mraiQueue.add(new MRAIFireEvent(mraiValue, tAS));
 		}
 
 		/*
@@ -74,29 +79,25 @@ public class BGPMaster implements Runnable {
 			tThread.start();
 		}
 
-		Thread masterThread = new Thread(self);
-		masterThread.start();
-		try {
-			masterThread.join();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
+		self.operateSim();
 	}
 
 	public BGPMaster(HashMap<Integer, BGPSpeaker> routingTopo) {
-		
-		this.workSem = new Semaphore(0);
-		
+
+		this.taskOut = 0;
+		this.taskSem = new Semaphore(0);
+		this.taskCompleteSem = new Semaphore(0);
 		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
-		this.mraiQueue = new PriorityQueue<MRAIFireEvent>();
+
+		this.nextWall = 0;
+		this.eventToWorkNode = new HashMap<SimEvent, WorkNode>();
 
 		this.topo = routingTopo;
 		this.workGraph = new WorkGraph(this.topo);
-		
-		this.workNodeOut = 0;
-		this.completeSem = new Semaphore(0);
+
+		this.workCompleteSem = new Semaphore(0);
 		this.completedNodes = new ConcurrentLinkedQueue<WorkNode>();
-		
+
 		/*
 		 * Give each BGP speaker a reference to the BGPMaster object (needed to
 		 * hand events to the sim)
@@ -123,267 +124,212 @@ public class BGPMaster implements Runnable {
 			System.exit(2);
 		}
 	}
-	
-	public void run(){
+
+	public void run() {
+
+	}
+
+	public void operateSim() {
 		boolean stillRunning = true;
-		
-		
-		/*
-		 * Do Run-up to next MRAI
-		 */
-		//TODO actually run everyone up to the first MRAI NEAR THEM
-		
-		while(stillRunning){
-			
+		long bgpStartTime = System.currentTimeMillis();
+		System.out.println("Starting up the BGP processing.");
+
+		while (stillRunning) {
+			boolean toTheWall = false;
+
 			/*
-			 * Fetch the nodes we start w/ and start them
+			 * Do Run-up to next MRAI from current wall, then update the wall
 			 */
-			Set<WorkNode> roots = this.workGraph.getRoots();
-			for(WorkNode tNode: roots){
-				this.workNodeOut++;
-				//TODO actually spin up work
-			}
-			
-			while(this.workNodeOut > 0){
-				try {
-					this.completeSem.acquire();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-					System.exit(2);
+			this.runningFromWall = true;
+			this.runFromWall(this.nextWall, this.logMaster.getNextLogTime());
+			this.nextWall = this.logMaster.getNextLogTime();
+			this.runningFromWall = false;
+
+			//TODO we need to build the dependency graph here
+
+			while (!toTheWall) {
+
+				/*
+				 * Reset the done status, fetch the nodes we start w/ and start
+				 * them
+				 */
+				this.workGraph.resetDoneStatus();
+				this.eventToWorkNode.clear();
+				Set<WorkNode> roots = this.workGraph.getRoots();
+				for (WorkNode tNode : roots) {
+					this.firstStepWorkNodeRun(tNode);
 				}
-				
-				WorkNode doneNode = this.completedNodes.poll();
-				this.workNodeOut--;
-				Set<WorkNode> goodToGo = doneNode.toggleRan();
-				for(WorkNode tNode: goodToGo){
-					this.workNodeOut++;
-					//TODO actually spin up work
+
+				/*
+				 * While we still have work nodes running, wait for nodes to
+				 * complete, and then spin up any children that might be good to
+				 * run
+				 */
+				for (int counter = 0; counter < this.workGraph.size(); counter++) {
+					try {
+						this.workCompleteSem.acquire();
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+						System.exit(2);
+					}
+
+					WorkNode doneNode = this.completedNodes.poll();
+					//FIXME there are thread safety issues inside this call
+					Set<WorkNode> goodToGo = doneNode.toggleRan();
+					for (WorkNode tNode : goodToGo) {
+						this.firstStepWorkNodeRun(tNode);
+					}
+				}
+
+				/*
+				 * Check to see if we've reached the wall
+				 */
+				toTheWall = true;
+				for (long tTime : this.asnRunTo.values()) {
+					if (tTime < this.nextWall) {
+						toTheWall = false;
+						break;
+					}
 				}
 			}
-			
+
+			/*
+			 * Do our last logging, since nothing is changing
+			 */
+			try {
+				this.logMaster.processLogging();
+			} catch (IOException e) {
+				System.err.println("Logging mechanism failed, dying violently!");
+				e.printStackTrace();
+				System.exit(-1);
+			}
+
 			/*
 			 * Evaluate if we're still running at the end of a round
 			 */
 			stillRunning = false;
-			for(BGPSpeaker tRouter: this.topo.values()){
-				if(!tRouter.isDone()){
+			for (BGPSpeaker tRouter : this.topo.values()) {
+				if (!tRouter.isDone()) {
 					stillRunning = true;
 					break;
 				}
 			}
 		}
-	}
-
-	public void run_old() {
-		boolean stillRunning = true;
-		boolean mraiRound = false;
-		long currentTime = 0;
-		long nextLogTime = this.logMaster.getNextLogTime();
-		long bgpStartTime = System.currentTimeMillis();
-		System.out.println("Starting up the BGP processing.");
-
-		HashSet<Integer> runNextRound = new HashSet<Integer>();
-
-		while (stillRunning) {
-			if (mraiRound) {
-				long nextMRAI = this.mraiQueue.peek().getEventTime();
-
-				/*
-				 * Time to log, as everyone is ran up to the logging horizon
-				 */
-				if (nextMRAI >= nextLogTime) {
-					/*
-					 * The simulator is up to date up to the logging horizon
-					 */
-					currentTime = nextLogTime;
-
-					/*
-					 * Do the logging and update the logging horizon
-					 */
-					try {
-						this.logMaster.processLogging();
-					} catch (IOException e) {
-						System.err
-								.println("Logging mechanism failed, dying violently!");
-						e.printStackTrace();
-						System.exit(-1);
-					}
-					nextLogTime = this.logMaster.getNextLogTime();
-
-					/*
-					 * We can't process the next MRAI yet, since no one is
-					 * actually there, they are just up to the old logging
-					 * horizon, so let people run past this wall to their next
-					 * MRAI (or concievably the next logging horizon if we're
-					 * doing really tight logging)
-					 */
-					mraiRound = false;
-					runNextRound.clear();
-				} else {
-					currentTime = this.mraiQueue.peek().getEventTime();
-				}
-
-				/*
-				 * Do our last logging, since nothing is changing
-				 */
-				try {
-					this.logMaster.processLogging();
-				} catch (IOException e) {
-					System.err
-							.println("Logging mechanism failed, dying violently!");
-					e.printStackTrace();
-					System.exit(-1);
-				}
-			}
-
-			this.spinUpWork(mraiRound, runNextRound, currentTime, nextLogTime);
-			mraiRound = !mraiRound;
-
-			try {
-				this.wall();
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-
-			if (mraiRound) {
-				stillRunning = false;
-				for (BGPSpeaker tRouter : this.topo.values()) {
-					if (!tRouter.isDone()) {
-						stillRunning = true;
-						break;
-					}
-				}
-			}
-		}
-
+		
+		/*
+		 * Spit out some end of simulation info
+		 */
 		bgpStartTime = System.currentTimeMillis() - bgpStartTime;
-		System.out.println("BGP done, this took: " + (bgpStartTime / 60000)
-				+ " minutes.");
-		System.out.println("Current step is: " + currentTime);
+		System.out.println("BGP done, this took: " + (bgpStartTime / 60000) + " minutes.");
+		System.out.println("Current step is: " + this.nextWall);
 
 		try {
 			this.logMaster.doneLogging();
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out
-					.println("Error closing logs, might be bad, but trying to muddle through.");
+			System.out.println("Error closing logs, might be bad, but trying to muddle through.");
 		}
 	}
 
-	public void addMRAIFire(MRAIFireEvent inEvent) {
-		synchronized (this.mraiQueue) {
-			this.mraiQueue.add(inEvent);
+	private void runFromWall(long wallTime, long nextWall) {
+		this.taskCompleteSem.drainPermits();
+		this.taskOut = 0;
+		for (int tASN : this.topo.keySet()) {
+			this.queueCPUEvent(tASN, wallTime, nextWall, null);
+		}
+
+		this.wallOnTasks();
+	}
+
+	private void queueCPUEvent(int asn, long currentTime, long theWall, WorkNode linkedWorkNode) {
+		/*
+		 * You're clear to move up to either the next MRAI you'll see or the
+		 * logging horizon, which ever is first obviously, this really shouldn't
+		 * happen outside of TINY logging windows (Log Window < MRAI to be
+		 * exact)
+		 */
+		long timeHorizon = Math.min(this.computeNextAdjMRAI(asn), theWall);
+
+		/*
+		 * Sanity check that we have not ran past the window, if we have not,
+		 * then please proceed
+		 */
+		if (timeHorizon > this.asnRunTo.get(asn)) {
+			this.asnRunTo.put(asn, timeHorizon);
+			ProcessEvent theEvent = new ProcessEvent(currentTime, timeHorizon, this.topo.get(asn));
+			this.readyToRunQueue.add(theEvent);
+			this.eventToWorkNode.put(theEvent, linkedWorkNode);
+			this.taskSem.release();
+			this.taskOut++;
+		} else {
+			/*
+			 * If we processed past this window that would be bad, we can have
+			 * already processed up to this time (edge condition when logging
+			 * horizon == mrai)
+			 */
+			if (timeHorizon < this.asnRunTo.get(asn)) {
+				throw new RuntimeException("There is a node ahead of the current time, but it has a processing event!");
+			}
+		}
+	}
+
+	private void wallOnTasks() {
+		for (int counter = 0; counter < this.taskOut; counter++) {
+			try {
+				this.taskCompleteSem.acquire();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				System.exit(2);
+			}
+		}
+
+		this.taskOut = 0;
+	}
+
+	private void firstStepWorkNodeRun(WorkNode taskGroup) {
+		BGPSpeaker advRouter = this.topo.get(taskGroup.getAdvertiser());
+		MRAIFireEvent tEvent = new MRAIFireEvent(advRouter.getNextMRAI(), advRouter);
+		this.eventToWorkNode.put(tEvent, taskGroup);
+		this.readyToRunQueue.add(tEvent);
+		this.taskSem.release();
+	}
+
+	private void secondStepWorkNodeRun(WorkNode taskGroup) {
+		this.queueCPUEvent(taskGroup.getAdvertiser(), this.asnRunTo.get(taskGroup.getAdvertiser()), this.nextWall,
+				taskGroup);
+		for (int tASN : taskGroup.getAdjacent()) {
+			this.queueCPUEvent(tASN, this.asnRunTo.get(tASN), this.nextWall, taskGroup);
 		}
 	}
 
 	public SimEvent getWork() throws InterruptedException {
-		this.workSem.acquire();
+		this.taskSem.acquire();
 		return this.readyToRunQueue.poll();
 	}
 
-	public void reportWorkDone() {
-		this.completeSem.release();
+	public void reportWorkDone(SimEvent completedEvent) {
+
+		if (completedEvent.getEventType() == SimEvent.MRAI_EVENT) {
+			this.secondStepWorkNodeRun(this.eventToWorkNode.get(completedEvent));
+		} else if (!this.runningFromWall) {
+			WorkNode tNode = this.eventToWorkNode.get(completedEvent);
+			if (tNode.decrimentOutstandingSubTasks() == 0) {
+				this.completedNodes.add(tNode);
+				this.workCompleteSem.release();
+			}
+		} else {
+			/*
+			 * This case happens when we're just running from a wall up to
+			 * everyone's next mrai with CPU events, in other words, when
+			 * runningFromWall is true, all we need to do is release a sem
+			 * ticket to move the call to wall forward
+			 */
+			this.taskCompleteSem.release();
+		}
 	}
 
 	public SimLogger getLoggingHook() {
 		return this.logMaster;
-	}
-
-	/**
-	 * Function that actually drives the worker threads. This will run in a
-	 * "round" based fashion. One round will deal with the MRAI expire, i.e. the
-	 * sending of updates. The round after will deal with the processing of said
-	 * updates. This will go back and forth.
-	 * 
-	 * @param mraiRound
-	 * @param runNextRound
-	 * @param currentTime
-	 * @param nextLogTime
-	 */
-	private void spinUpWork(boolean mraiRound, HashSet<Integer> runNextRound,
-			long currentTime, long nextLogTime) {
-
-		if (mraiRound) {
-
-			/*
-			 * Empty out the work set, as we'll be populating this now
-			 */
-			runNextRound.clear();
-
-			/*
-			 * remove all MRAI pops
-			 */
-			synchronized (this.mraiQueue) {
-				/*
-				 * This has logic to deal with multiple routers having MRAIs at
-				 * the same time, shouldn't happen, but the logic is here if
-				 * needed in the future again
-				 */
-				while (!this.mraiQueue.isEmpty()
-						&& this.mraiQueue.peek().getEventTime() == currentTime) {
-					MRAIFireEvent tEvent = this.mraiQueue.poll();
-
-					/*
-					 * Add all of the neighbors to the run next round list, as
-					 * they will be able to run ahead now
-					 */
-					runNextRound.addAll(tEvent.getOwner().getASObject()
-							.getNeighbors());
-					runNextRound.add(tEvent.getOwner().getASN());
-
-					this.readyToRunQueue.add(tEvent);
-					this.workSem.release();
-					this.workNodeOut++;
-				}
-			}
-
-		} else {
-			/*
-			 * This is an edge case for the FIRST round of the simulator or when
-			 * we get done with a logging pass and concievably all nodes need to
-			 * move forward to their next mrai
-			 */
-			if (runNextRound.isEmpty()) {
-				runNextRound.addAll(this.topo.keySet());
-			}
-
-			for (int tASN : runNextRound) {
-				/*
-				 * You're clear to move up to either the next MRAI you'll see or
-				 * the logging horizon, which ever is first obviously
-				 */
-				long timeHorizon = Math.min(this.computeNextAdjMRAI(tASN),
-						nextLogTime);
-				/*
-				 * Sanity check that we have not ran past the window, if we have
-				 * not, then please proceed
-				 */
-				if (timeHorizon > this.asnRunTo.get(tASN)) {
-					this.asnRunTo.put(tASN, timeHorizon);
-					this.readyToRunQueue.add(new ProcessEvent(currentTime,
-							timeHorizon, this.topo.get(tASN)));
-					this.workSem.release();
-					this.workNodeOut++;
-				} else {
-					/*
-					 * If we processed past this window that would be bad, we
-					 * can have already processed up to this time (edge
-					 * condition when logging horizon == mrai)
-					 */
-					if (timeHorizon < this.asnRunTo.get(tASN)) {
-						throw new RuntimeException(
-								"There is a node ahead of the current time, but it has a processing event!");
-					}
-				}
-			}
-		}
-	}
-
-	public void wall() throws InterruptedException {
-		for (int counter = 0; counter < this.workNodeOut; counter++) {
-			this.completeSem.acquire();
-		}
-		this.workNodeOut = 0;
 	}
 
 	private long computeNextAdjMRAI(int asn) {

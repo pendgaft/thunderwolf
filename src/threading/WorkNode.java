@@ -6,6 +6,7 @@ public class WorkNode {
 	
 	private int advertiser;
 	private Set<Integer> adjacentAS;
+	private int outstandingSubtasks;
 	
 	private Set<WorkNode> parents;
 	private Set<WorkNode> children;
@@ -18,6 +19,7 @@ public class WorkNode {
 		this.parents = new HashSet<WorkNode>();
 		this.children = new HashSet<WorkNode>();
 		this.ran = false;
+		this.outstandingSubtasks = adjacent.size() + 1;
 	}
 	
 	
@@ -39,7 +41,6 @@ public class WorkNode {
 				return true;
 			}
 		}
-		
 		return false;
 	}
 	
@@ -62,6 +63,12 @@ public class WorkNode {
 	
 	public void resetRan(){
 		this.ran = false;
+		this.outstandingSubtasks = this.adjacentAS.size() + 1;
+	}
+	
+	public synchronized int decrimentOutstandingSubTasks(){
+		this.outstandingSubtasks--;
+		return this.outstandingSubtasks;
 	}
 	
 	public boolean hasRan(){
@@ -79,6 +86,10 @@ public class WorkNode {
 
 	public int getAdvertiser(){
 		return this.advertiser;
+	}
+	
+	public Set<Integer> getAdjacent(){
+		return this.adjacentAS;
 	}
 	
 	public String toString(){
