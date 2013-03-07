@@ -61,4 +61,13 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 		strBuilder.append(Integer.toString(this.myOwner.getASN()));
 		return strBuilder.toString();
 	}
+	
+	public int hashCode(){
+		return this.myOwner.getASN() + this.eventType * 100000 + (int)this.eventTime;
+	}
+	
+	public boolean equals(Object rhs){
+		SimEvent rhsEvent = (SimEvent)rhs;
+		return rhsEvent.getOwner().getASN() == this.getOwner().getASN() && this.eventType == rhsEvent.eventType && this.eventTime == rhsEvent.eventTime;
+	}
 }
