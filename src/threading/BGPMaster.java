@@ -32,7 +32,7 @@ public class BGPMaster implements Runnable {
 
 	private long nextWall;
 	private boolean runningFromWall;
-	private HashMap<SimEvent, WorkNode> eventToWorkNode;
+	private HashMap<Integer, WorkNode> eventToWorkNode;
 
 	/**
 	 * Stores the time up to which an AS's processing has been computed i.e.
@@ -73,7 +73,7 @@ public class BGPMaster implements Runnable {
 			while (mraiValue == 0) {
 				jitter = rng.nextLong() % (30 * SimEvent.SECOND_MULTIPLIER);
 				mraiValue = 30 * SimEvent.SECOND_MULTIPLIER + jitter;
-				if(mraiUnique.contains(mraiValue) || mraiValue % SimEvent.SECOND_MULTIPLIER == 0){
+				if (mraiUnique.contains(mraiValue) || mraiValue % SimEvent.SECOND_MULTIPLIER == 0) {
 					mraiValue = 0;
 				}
 			}
@@ -100,7 +100,7 @@ public class BGPMaster implements Runnable {
 		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
 
 		this.nextWall = 0;
-		this.eventToWorkNode = new HashMap<SimEvent, WorkNode>();
+		this.eventToWorkNode = new HashMap<Integer, WorkNode>();
 
 		this.topo = routingTopo;
 
@@ -158,7 +158,7 @@ public class BGPMaster implements Runnable {
 			 * Rebuild the work graph
 			 */
 			this.workGraph = new WorkGraph(this.topo);
-			if(BGPMaster.THREAD_DEBUG){
+			if (BGPMaster.THREAD_DEBUG) {
 				System.out.println("Build work graph.");
 				System.out.println(this.workGraph);
 			}
@@ -172,7 +172,7 @@ public class BGPMaster implements Runnable {
 				this.workGraph.resetDoneStatus();
 				this.eventToWorkNode.clear();
 				Set<WorkNode> roots = this.workGraph.getRoots();
-				if(BGPMaster.THREAD_DEBUG){
+				if (BGPMaster.THREAD_DEBUG) {
 					System.out.println("Firing up " + roots.size() + " roots.");
 				}
 				for (WorkNode tNode : roots) {
@@ -192,12 +192,12 @@ public class BGPMaster implements Runnable {
 						System.exit(2);
 					}
 
-					if(BGPMaster.THREAD_DEBUG){
+					if (BGPMaster.THREAD_DEBUG) {
 						System.out.println("A node is done!");
 					}
 					WorkNode doneNode = this.completedNodes.poll();
 					Set<WorkNode> goodToGo = doneNode.toggleRan();
-					if(BGPMaster.THREAD_DEBUG){
+					if (BGPMaster.THREAD_DEBUG) {
 						System.out.println("Spinning up: " + goodToGo.size() + " new nodes.");
 					}
 					for (WorkNode tNode : goodToGo) {
@@ -208,7 +208,7 @@ public class BGPMaster implements Runnable {
 				/*
 				 * Check to see if we've reached the wall
 				 */
-				if(BGPMaster.THREAD_DEBUG){
+				if (BGPMaster.THREAD_DEBUG) {
 					System.out.println("Check if to the wall.");
 				}
 				toTheWall = true;
@@ -285,7 +285,7 @@ public class BGPMaster implements Runnable {
 			this.asnRunTo.put(asn, timeHorizon);
 			ProcessEvent theEvent = new ProcessEvent(currentTime, timeHorizon, this.topo.get(asn));
 			this.readyToRunQueue.add(theEvent);
-			this.eventToWorkNode.put(theEvent, linkedWorkNode);
+			this.eventToWorkNode.put(asn, linkedWorkNode);
 			this.taskSem.release();
 			this.taskOut++;
 		} else {
@@ -294,9 +294,7 @@ public class BGPMaster implements Runnable {
 			 * already processed up to this time (edge condition when logging
 			 * horizon == mrai)
 			 */
-			if (timeHorizon < this.asnRunTo.get(asn)) {
-				throw new RuntimeException("There is a node ahead of the current time, but it has a processing event!");
-			}
+			throw new RuntimeException("There is a node ahead of the current time, but it has a processing event!");
 		}
 	}
 
@@ -314,19 +312,19 @@ public class BGPMaster implements Runnable {
 	}
 
 	private void firstStepWorkNodeRun(WorkNode taskGroup) {
-		if(BGPMaster.THREAD_DEBUG){
+		if (BGPMaster.THREAD_DEBUG) {
 			System.out.println("First stage go: " + taskGroup);
 		}
-		
+
 		BGPSpeaker advRouter = this.topo.get(taskGroup.getAdvertiser());
 		MRAIFireEvent tEvent = new MRAIFireEvent(advRouter.getNextMRAI(), advRouter);
-		this.eventToWorkNode.put(tEvent, taskGroup);
+		this.eventToWorkNode.put(taskGroup.getAdvertiser(), taskGroup);
 		this.readyToRunQueue.add(tEvent);
 		this.taskSem.release();
 	}
 
 	private void secondStepWorkNodeRun(WorkNode taskGroup) {
-		if(BGPMaster.THREAD_DEBUG){
+		if (BGPMaster.THREAD_DEBUG) {
 			System.out.println("Second stage go.");
 		}
 		this.queueCPUEvent(taskGroup.getAdvertiser(), this.asnRunTo.get(taskGroup.getAdvertiser()), this.nextWall,
@@ -342,14 +340,14 @@ public class BGPMaster implements Runnable {
 	}
 
 	public void reportWorkDone(SimEvent completedEvent) {
-		if(BGPMaster.THREAD_DEBUG){
+		if (BGPMaster.THREAD_DEBUG) {
 			System.out.println("Incoming complete event: " + completedEvent.toString());
 		}
 
 		if (completedEvent.getEventType() == SimEvent.MRAI_EVENT) {
-			this.secondStepWorkNodeRun(this.eventToWorkNode.get(completedEvent));
+			this.secondStepWorkNodeRun(this.eventToWorkNode.get(completedEvent.getOwner().getASN()));
 		} else if (!this.runningFromWall) {
-			WorkNode tNode = this.eventToWorkNode.get(completedEvent);
+			WorkNode tNode = this.eventToWorkNode.get(completedEvent.getOwner().getASN());
 			if (tNode.decrimentOutstandingSubTasks() == 0) {
 				this.completedNodes.add(tNode);
 				this.workCompleteSem.release();
