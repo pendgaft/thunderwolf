@@ -153,6 +153,9 @@ public class BGPMaster implements Runnable {
 			this.runFromWall(this.nextWall, this.logMaster.getNextLogTime());
 			this.nextWall = this.logMaster.getNextLogTime();
 			this.runningFromWall = false;
+			if( BGPMaster.THREAD_DEBUG){
+			    System.out.println("Done with run up, building graph.");
+			}
 
 			/*
 			 * Rebuild the work graph
