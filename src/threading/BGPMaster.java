@@ -32,7 +32,8 @@ public class BGPMaster implements Runnable {
 
 	private long nextWall;
 	private boolean runningFromWall;
-	private HashMap<Integer, WorkNode> eventToWorkNode;
+	private WorkNode[] asnToWorkNode;
+	private HashMap<Integer, Integer> asnToSlot;
 
 	/**
 	 * Stores the time up to which an AS's processing has been computed i.e.
@@ -100,7 +101,13 @@ public class BGPMaster implements Runnable {
 		this.readyToRunQueue = new ConcurrentLinkedQueue<SimEvent>();
 
 		this.nextWall = 0;
-		this.eventToWorkNode = new HashMap<Integer, WorkNode>();
+		this.asnToWorkNode = new WorkNode[routingTopo.size()];
+		this.asnToSlot = new HashMap<Integer, Integer>();
+		int counter = 0;
+		for(BGPSpeaker tRouter: routingTopo.values()){
+			this.asnToSlot.put(tRouter.getASN(), counter);
+			counter++;
+		}
 
 		this.topo = routingTopo;
 
@@ -173,7 +180,7 @@ public class BGPMaster implements Runnable {
 				 * them
 				 */
 				this.workGraph.resetDoneStatus();
-				this.eventToWorkNode.clear();
+				this.clearWorkNodeMapping();
 				Set<WorkNode> roots = this.workGraph.getRoots();
 				if (BGPMaster.THREAD_DEBUG) {
 					System.out.println("Firing up " + roots.size() + " roots.");
@@ -223,7 +230,7 @@ public class BGPMaster implements Runnable {
 				}
 			}
 
-			/*
+			/*clearWorkNodeMapping
 			 * Do our last logging, since nothing is changing
 			 */
 			try {
@@ -288,7 +295,7 @@ public class BGPMaster implements Runnable {
 			this.asnRunTo.put(asn, timeHorizon);
 			ProcessEvent theEvent = new ProcessEvent(currentTime, timeHorizon, this.topo.get(asn));
 			this.readyToRunQueue.add(theEvent);
-			this.eventToWorkNode.put(asn, linkedWorkNode);
+			this.asnToWorkNode[this.asnToSlot.get(asn)] = linkedWorkNode;
 			this.taskSem.release();
 			this.taskOut++;
 		} else {
@@ -310,7 +317,6 @@ public class BGPMaster implements Runnable {
 				System.exit(2);
 			}
 		}
-
 		this.taskOut = 0;
 	}
 
@@ -321,7 +327,7 @@ public class BGPMaster implements Runnable {
 
 		BGPSpeaker advRouter = this.topo.get(taskGroup.getAdvertiser());
 		MRAIFireEvent tEvent = new MRAIFireEvent(advRouter.getNextMRAI(), advRouter);
-		this.eventToWorkNode.put(taskGroup.getAdvertiser(), taskGroup);
+		this.asnToWorkNode[this.asnToSlot.get(taskGroup.getAdvertiser())] = taskGroup;
 		this.readyToRunQueue.add(tEvent);
 		this.taskSem.release();
 	}
@@ -348,9 +354,9 @@ public class BGPMaster implements Runnable {
 		}
 
 		if (completedEvent.getEventType() == SimEvent.MRAI_EVENT) {
-			this.secondStepWorkNodeRun(this.eventToWorkNode.get(completedEvent.getOwner().getASN()));
+			this.secondStepWorkNodeRun(this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())]);
 		} else if (!this.runningFromWall) {
-			WorkNode tNode = this.eventToWorkNode.get(completedEvent.getOwner().getASN());
+			WorkNode tNode = this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())];
 			if (tNode.decrimentOutstandingSubTasks() == 0) {
 				this.completedNodes.add(tNode);
 				this.workCompleteSem.release();
@@ -380,5 +386,11 @@ public class BGPMaster implements Runnable {
 		}
 
 		return min;
+	}
+	
+	private void clearWorkNodeMapping(){
+		for(int counter = 0; counter < this.asnToWorkNode.length; counter++){
+			this.asnToWorkNode[counter] = null;
+		}
 	}
 }
