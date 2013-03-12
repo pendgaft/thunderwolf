@@ -142,14 +142,14 @@ public class WorkGraph {
 		for(int counter = 1; counter < 9; counter++){
 			asMap.put(counter, new AS(counter, 1));
 		}
-		asMap.get(1).addRelation(asMap.get(6), 1);
-		asMap.get(1).addRelation(asMap.get(4), -1);
-		asMap.get(2).addRelation(asMap.get(8), 1);
-		asMap.get(3).addRelation(asMap.get(6), -1);
-		asMap.get(3).addRelation(asMap.get(7), -1);
-		asMap.get(4).addRelation(asMap.get(7), 1);
-		asMap.get(4).addRelation(asMap.get(8), -1);
-		asMap.get(5).addRelation(asMap.get(8), -1);
+		asMap.get(1).addParsedRelation(asMap.get(6), 1);
+		asMap.get(1).addParsedRelation(asMap.get(4), -1);
+		asMap.get(2).addParsedRelation(asMap.get(8), 1);
+		asMap.get(3).addParsedRelation(asMap.get(6), -1);
+		asMap.get(3).addParsedRelation(asMap.get(7), -1);
+		asMap.get(4).addParsedRelation(asMap.get(7), 1);
+		asMap.get(4).addParsedRelation(asMap.get(8), -1);
+		asMap.get(5).addParsedRelation(asMap.get(8), -1);
 		
 		for(int counter = 1; counter < 9; counter++){
 			topoMap.put(counter, new BGPSpeaker(asMap.get(counter), topoMap));
