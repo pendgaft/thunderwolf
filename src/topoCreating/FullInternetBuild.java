@@ -24,6 +24,7 @@ public class FullInternetBuild {
 		}
 		
 		HashMap<Integer, AS> prunedMap = FullInternetBuild.pruneTopo(asMap);
+		//HashMap<Integer, AS> secondPruneMap = FullInternetBuild.pruneTopo(prunedMap);
 		FullInternetBuild.dumpToFile(prunedMap);
 	}
 	
@@ -82,17 +83,17 @@ public class FullInternetBuild {
 					continue;
 				}
 				
-				tAS.addRelation(retMap.get(tCust), AS.CUSTOMER_CODE);
+				tAS.addCustomer(startingMap.get(tCust));
 			}
 			for(int tPeer: oldAS.getPeers()){
 				if(toRemove.contains(tPeer)){
 					continue;
 				}
 				
-				tAS.addRelation(retMap.get(tPeer), AS.PEER_CODE);
+				tAS.addPeer(startingMap.get(tPeer));
 			}
 			for(int tProv: oldAS.getProviders()){
-				tAS.addRelation(retMap.get(tProv), AS.PROIVDER_CODE);
+				tAS.addProvider(startingMap.get(tProv));
 			}
 		}
 		

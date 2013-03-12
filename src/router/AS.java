@@ -53,7 +53,7 @@ public class AS {
 	 * @param myRelationToThem
 	 *            -
 	 */
-	public void addRelation(AS otherAS, int myRelationToThem) {
+	public void addParsedRelation(AS otherAS, int myRelationToThem) {
 		if (myRelationToThem == AS.PROIVDER_CODE) {
 			this.customers.add(otherAS.getASN());
 			otherAS.providers.add(this.getASN());
@@ -69,6 +69,21 @@ public class AS {
 			throw new BGPException("Bad relation passed to add relation: "
 					+ myRelationToThem);
 		}
+	}
+	
+	public void addCustomer(AS otherAS){
+		this.customers.add(otherAS.getASN());
+		otherAS.providers.add(this.getASN());
+	}
+	
+	public void addPeer(AS otherAS){
+		this.peers.add(otherAS.getASN());
+		otherAS.peers.add(this.getASN());
+	}
+	
+	public void addProvider(AS otherAS){
+		this.providers.add(otherAS.getASN());
+		otherAS.customers.add(this.getASN());
 	}
 
 	/**

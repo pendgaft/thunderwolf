@@ -131,7 +131,7 @@ public class ASTopoParser {
 				retMap.put(rhsASN, new AS(rhsASN, 1));
 				noCIDRCount++;
 			}
-			retMap.get(lhsASN).addRelation(retMap.get(rhsASN), rel);
+			retMap.get(lhsASN).addParsedRelation(retMap.get(rhsASN), rel);
 		}
 		fBuff.close();
 
