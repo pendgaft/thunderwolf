@@ -17,7 +17,7 @@ public class SimLogger {
 	private HashMap<Integer, BGPSpeaker> topology;
 
 	private long nextLoggingHorizon;
-	public static final long LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 600;
+	public static final long LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 30;
 
 	private static final String LOG_DIR = "logs/";
 	private static final String MEM_STUB = "-mem.csv";
@@ -94,7 +94,7 @@ public class SimLogger {
 		/*
 		 * Spit some stuff to the console
 		 */
-		this.printToConsole();
+		//this.printToConsole();
 
 		/*
 		 * Last thing, since we're done w/ this window, scoot the time horizon
@@ -186,6 +186,7 @@ public class SimLogger {
 		 * Last, terminate the line
 		 */
 		outputStream.newLine();
+		outputStream.flush();
 	}
 	
 	private void printToConsole(){
