@@ -102,6 +102,7 @@ public class BGPMaster implements Runnable {
 
 		this.nextWall = 0;
 		this.asnToWorkNode = new WorkNode[routingTopo.size()];
+		this.clearWorkNodeMapping();
 		this.asnToSlot = new HashMap<Integer, Integer>();
 		int counter = 0;
 		for(BGPSpeaker tRouter: routingTopo.values()){
@@ -295,6 +296,9 @@ public class BGPMaster implements Runnable {
 			this.asnRunTo.put(asn, timeHorizon);
 			ProcessEvent theEvent = new ProcessEvent(currentTime, timeHorizon, this.topo.get(asn));
 			this.readyToRunQueue.add(theEvent);
+			if(this.asnToWorkNode[this.asnToSlot.get(asn)] != null){
+				throw new RuntimeException("Double running node: " + asn);
+			}
 			this.asnToWorkNode[this.asnToSlot.get(asn)] = linkedWorkNode;
 			this.taskSem.release();
 			this.taskOut++;
@@ -327,6 +331,9 @@ public class BGPMaster implements Runnable {
 
 		BGPSpeaker advRouter = this.topo.get(taskGroup.getAdvertiser());
 		MRAIFireEvent tEvent = new MRAIFireEvent(advRouter.getNextMRAI(), advRouter);
+		if(this.asnToWorkNode[this.asnToSlot.get(taskGroup.getAdvertiser())] != null){
+			throw new RuntimeException("Double running node: " + taskGroup.getAdvertiser());
+		}
 		this.asnToWorkNode[this.asnToSlot.get(taskGroup.getAdvertiser())] = taskGroup;
 		this.readyToRunQueue.add(tEvent);
 		this.taskSem.release();
@@ -354,9 +361,12 @@ public class BGPMaster implements Runnable {
 		}
 
 		if (completedEvent.getEventType() == SimEvent.MRAI_EVENT) {
-			this.secondStepWorkNodeRun(this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())]);
+			WorkNode doneNode = this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())];
+			this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())] = null;
+			this.secondStepWorkNodeRun(doneNode);
 		} else if (!this.runningFromWall) {
 			WorkNode tNode = this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())];
+			this.asnToWorkNode[this.asnToSlot.get(completedEvent.getOwner().getASN())] = null;
 			if (tNode.decrimentOutstandingSubTasks() == 0) {
 				this.completedNodes.add(tNode);
 				this.workCompleteSem.release();
