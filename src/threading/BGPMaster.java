@@ -111,6 +111,7 @@ public class BGPMaster implements Runnable {
 		}
 
 		this.topo = routingTopo;
+		this.workGraph = new WorkGraph(this.topo);
 
 		this.workCompleteSem = new Semaphore(0);
 		this.completedNodes = new ConcurrentLinkedQueue<WorkNode>();
@@ -163,15 +164,6 @@ public class BGPMaster implements Runnable {
 			this.runningFromWall = false;
 			if( BGPMaster.THREAD_DEBUG){
 			    System.out.println("Done with run up, building graph.");
-			}
-
-			/*
-			 * Rebuild the work graph
-			 */
-			this.workGraph = new WorkGraph(this.topo);
-			if (BGPMaster.THREAD_DEBUG) {
-				System.out.println("Build work graph.");
-				System.out.println(this.workGraph);
 			}
 
 			while (!toTheWall) {
