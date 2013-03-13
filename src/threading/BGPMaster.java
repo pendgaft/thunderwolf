@@ -295,11 +295,11 @@ public class BGPMaster implements Runnable {
 		if (timeHorizon >= this.asnRunTo.get(asn)) {
 			this.asnRunTo.put(asn, timeHorizon);
 			ProcessEvent theEvent = new ProcessEvent(currentTime, timeHorizon, this.topo.get(asn));
-			this.readyToRunQueue.add(theEvent);
 			if(this.asnToWorkNode[this.asnToSlot.get(asn)] != null){
 				throw new RuntimeException("Double running node: " + asn);
 			}
 			this.asnToWorkNode[this.asnToSlot.get(asn)] = linkedWorkNode;
+			this.readyToRunQueue.add(theEvent);
 			this.taskSem.release();
 			this.taskOut++;
 		} else {
