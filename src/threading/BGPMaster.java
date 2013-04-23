@@ -105,7 +105,7 @@ public class BGPMaster implements Runnable {
 		this.clearWorkNodeMapping();
 		this.asnToSlot = new HashMap<Integer, Integer>();
 		int counter = 0;
-		for(BGPSpeaker tRouter: routingTopo.values()){
+		for (BGPSpeaker tRouter : routingTopo.values()) {
 			this.asnToSlot.put(tRouter.getASN(), counter);
 			counter++;
 		}
@@ -117,12 +117,9 @@ public class BGPMaster implements Runnable {
 		this.completedNodes = new ConcurrentLinkedQueue<WorkNode>();
 
 		/*
-		 * Give each BGP speaker a reference to the BGPMaster object (needed to
-		 * hand events to the sim)
+		 * Setup the "run to" map that keeps track of what time each AS has
+		 * calculated up to
 		 */
-		for (BGPSpeaker tRouter : this.topo.values()) {
-			tRouter.registerBGPMaster(this);
-		}
 		this.asnRunTo = new HashMap<Integer, Long>();
 		for (int tASN : this.topo.keySet()) {
 			this.asnRunTo.put(tASN, (long) 0);
@@ -162,8 +159,8 @@ public class BGPMaster implements Runnable {
 			this.runFromWall(this.nextWall, this.logMaster.getNextLogTime());
 			this.nextWall = this.logMaster.getNextLogTime();
 			this.runningFromWall = false;
-			if( BGPMaster.THREAD_DEBUG){
-			    System.out.println("Done with run up, building graph.");
+			if (BGPMaster.THREAD_DEBUG) {
+				System.out.println("Done with run up, building graph.");
 			}
 
 			while (!toTheWall) {
@@ -223,8 +220,9 @@ public class BGPMaster implements Runnable {
 				}
 			}
 
-			/*clearWorkNodeMapping
-			 * Do our last logging, since nothing is changing
+			/*
+			 * clearWorkNodeMapping Do our last logging, since nothing is
+			 * changing
 			 */
 			try {
 				this.logMaster.processLogging();
@@ -287,7 +285,7 @@ public class BGPMaster implements Runnable {
 		if (timeHorizon >= this.asnRunTo.get(asn)) {
 			this.asnRunTo.put(asn, timeHorizon);
 			ProcessEvent theEvent = new ProcessEvent(currentTime, timeHorizon, this.topo.get(asn));
-			if(this.asnToWorkNode[this.asnToSlot.get(asn)] != null){
+			if (this.asnToWorkNode[this.asnToSlot.get(asn)] != null) {
 				throw new RuntimeException("Double running node: " + asn);
 			}
 			this.asnToWorkNode[this.asnToSlot.get(asn)] = linkedWorkNode;
@@ -323,7 +321,7 @@ public class BGPMaster implements Runnable {
 
 		BGPSpeaker advRouter = this.topo.get(taskGroup.getAdvertiser());
 		MRAIFireEvent tEvent = new MRAIFireEvent(advRouter.getNextMRAI(), advRouter);
-		if(this.asnToWorkNode[this.asnToSlot.get(taskGroup.getAdvertiser())] != null){
+		if (this.asnToWorkNode[this.asnToSlot.get(taskGroup.getAdvertiser())] != null) {
 			throw new RuntimeException("Double running node: " + taskGroup.getAdvertiser());
 		}
 		this.asnToWorkNode[this.asnToSlot.get(taskGroup.getAdvertiser())] = taskGroup;
@@ -389,9 +387,9 @@ public class BGPMaster implements Runnable {
 
 		return min;
 	}
-	
-	private void clearWorkNodeMapping(){
-		for(int counter = 0; counter < this.asnToWorkNode.length; counter++){
+
+	private void clearWorkNodeMapping() {
+		for (int counter = 0; counter < this.asnToWorkNode.length; counter++) {
 			this.asnToWorkNode[counter] = null;
 		}
 	}
