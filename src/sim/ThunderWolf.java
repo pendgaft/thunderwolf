@@ -11,7 +11,7 @@ import threading.BGPMaster;
 public class ThunderWolf {
 
 	public static final boolean DEBUG = false;
-	
+
 	/**
 	 * This flag turns on a somewhat ghetto hack when dealing with our
 	 * relationship to "ourself"
@@ -23,7 +23,7 @@ public class ThunderWolf {
 	private NetworkSeeder netSeeder = null;
 
 	protected enum Mode {
-		EVEN, INJECTOR
+		EVEN, INJECTOR, REAL
 	}
 
 	public static void main(String[] args) throws IOException {
@@ -36,6 +36,8 @@ public class ThunderWolf {
 			theMode = Mode.EVEN;
 		} else if (args[1].equalsIgnoreCase("injector")) {
 			theMode = Mode.INJECTOR;
+		} else if (args[1].equalsIgnoreCase("realistic")) {
+			theMode = Mode.REAL;
 		} else {
 			System.err.println("Bad mode given: " + args[1]);
 			return;
@@ -67,10 +69,14 @@ public class ThunderWolf {
 		 */
 		System.out.println("Creating router topology.");
 		start = System.currentTimeMillis();
-		this.routerMap = ASTopoParser.doNetworkBuild(topologyFile);
+		ASTopoParser topoParse = new ASTopoParser(topologyFile);
+		if (myMode == Mode.REAL) {
+			this.routerMap = topoParse.doNetworkBuild(true);
+		} else {
+			this.routerMap = topoParse.doNetworkBuild(false);
+		}
 		end = System.currentTimeMillis();
-		System.out.println("Topology created in: " + (end - start) / 1000
-				+ " seconds.\n");
+		System.out.println("Topology created in: " + (end - start) / 1000 + " seconds.\n");
 
 		/*
 		 * Setup network seeder
@@ -82,9 +88,10 @@ public class ThunderWolf {
 			HashSet<Integer> targetSet = new HashSet<Integer>();
 			targetSet.add(3);
 			this.netSeeder = new MultiInjector(routerMap, targetSet, 50000, 10);
+		} else if (myMode == Mode.REAL) {
+			this.netSeeder = new RealSeeder(routerMap, topoParse.getUnpruned());
 		} else {
-			throw new RuntimeException(
-					"Passed a mode to ThunderWolf Constructor that we do not know how to seed!");
+			throw new RuntimeException("Passed a mode to ThunderWolf Constructor that we do not know how to seed!");
 		}
 	}
 

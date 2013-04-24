@@ -9,23 +9,24 @@ public class FullInternetBuild {
 
 	
 	private static final String BASE_FILE = "full-internet";
-	private static final String OUT_FILE = "pruned-internet";
+	private static final String OUT_FILE = "whole-internet";
 	
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) throws IOException{
-		HashMap<Integer, BGPSpeaker> startingMap = ASTopoParser.doNetworkBuild(FullInternetBuild.BASE_FILE);
+		ASTopoParser topParse = new ASTopoParser(FullInternetBuild.BASE_FILE);
+		HashMap<Integer, BGPSpeaker> startingMap = topParse.doNetworkBuild(false);
 
 		
-		HashMap<Integer, AS> asMap = new HashMap<Integer, AS>();
-		for(int tASN: startingMap.keySet()){
-			asMap.put(tASN, startingMap.get(tASN).getASObject());
-		}
+		//HashMap<Integer, AS> asMap = new HashMap<Integer, AS>();
+		//for(int tASN: startingMap.keySet()){
+		//	asMap.put(tASN, startingMap.get(tASN).getASObject());
+		//}
 		
-		HashMap<Integer, AS> prunedMap = FullInternetBuild.pruneTopo(asMap);
+		//HashMap<Integer, AS> prunedMap = FullInternetBuild.pruneTopo(asMap);
 		//HashMap<Integer, AS> secondPruneMap = FullInternetBuild.pruneTopo(prunedMap);
-		FullInternetBuild.dumpToFile(prunedMap);
+		FullInternetBuild.dumpToFile(topParse.getUnpruned());
 	}
 	
 	private static void dumpToFile(HashMap<Integer, AS> asMap) throws IOException{

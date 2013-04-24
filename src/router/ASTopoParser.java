@@ -3,7 +3,6 @@ package router;
 import java.util.*;
 import java.io.*;
 
-
 /**
  * Class containing a static method for construction of the topology. This class
  * ASSUMES that the topology files are pre-pruned, and that any AS found in the
@@ -14,6 +13,18 @@ import java.io.*;
  */
 public class ASTopoParser {
 
+	private String asRelFileName;
+	private HashMap<Integer, AS> unprunedTopo;
+
+	public ASTopoParser(String asRelFile) {
+		this.asRelFileName = asRelFile;
+		this.unprunedTopo = null;
+	}
+	
+	public HashMap<Integer, AS> getUnpruned(){
+		return this.unprunedTopo;
+	}
+
 	/**
 	 * Static function that does the actual building of BGPSpeaker objects. It
 	 * of course builds the AS objects first, then creates the BGP Speakers
@@ -23,8 +34,16 @@ public class ASTopoParser {
 	 *             - if there is an error reading either the relationship or
 	 *             cidr file
 	 */
-	public static HashMap<Integer, BGPSpeaker> doNetworkBuild(String asRelFile) throws IOException {
-		HashMap<Integer, AS> asMap = ASTopoParser.parseFile(asRelFile + "-rel.txt", asRelFile + "-ip.txt");
+	public HashMap<Integer, BGPSpeaker> doNetworkBuild(boolean singlePassPrune) throws IOException {
+		HashMap<Integer, AS> asMap = this.parseFile(this.asRelFileName + "-rel.txt", this.asRelFileName + "-ip.txt");
+		this.unprunedTopo = asMap;
+
+		/*
+		 * If we are suppose to do a prune of the ASes do it here please
+		 */
+		if (singlePassPrune) {
+			asMap = this.doNetworkPrune();
+		}
 
 		/*
 		 * Build the actual routers, pass a reference to the router map itself
@@ -50,7 +69,7 @@ public class ASTopoParser {
 	 * @throws IOException
 	 *             - if there is an issue reading from either file
 	 */
-	private static HashMap<Integer, AS> parseFile(String asRelFile, String cidrCountFile) throws IOException {
+	private HashMap<Integer, AS> parseFile(String asRelFile, String cidrCountFile) throws IOException {
 
 		HashMap<Integer, AS> retMap = new HashMap<Integer, AS>();
 		int noCIDRCount = 0;
@@ -123,11 +142,11 @@ public class ASTopoParser {
 			 * Actually add the relation, we only need to call this for one
 			 * object and it handles symmetry enforcement
 			 */
-			if(!retMap.containsKey(lhsASN)){
+			if (!retMap.containsKey(lhsASN)) {
 				retMap.put(lhsASN, new AS(lhsASN, 1));
 				noCIDRCount++;
 			}
-			if(!retMap.containsKey(rhsASN)){
+			if (!retMap.containsKey(rhsASN)) {
 				retMap.put(rhsASN, new AS(rhsASN, 1));
 				noCIDRCount++;
 			}
@@ -136,7 +155,51 @@ public class ASTopoParser {
 		fBuff.close();
 
 		System.out.println("ASes without CIDR mapping: " + noCIDRCount);
-		
+
 		return retMap;
+	}
+
+	private HashMap<Integer, AS> doNetworkPrune() {
+		HashMap<Integer, AS> prunedMap = new HashMap<Integer, AS>();
+
+		for (AS tAS : this.unprunedTopo.values()) {
+			if (tAS.getCustomers().size() > 0) {
+				prunedMap.put(tAS.getASN(), new AS(tAS.getASN(), tAS.getCIDRSize()));
+			}
+		}
+
+		/*
+		 * Build the relations for the deep copy objects
+		 */
+		for (AS newAS : prunedMap.values()) {
+			AS oldAS = this.unprunedTopo.get(newAS.getASN());
+
+			/*
+			 * Populate providers, this will all exist by default since they
+			 * can't be pruned by definition
+			 */
+			for (Integer provASN : oldAS.getProviders()) {
+				newAS.addProvider(prunedMap.get(provASN));
+			}
+
+			/*
+			 * Do the same with peers and customers, but we do need to ensure
+			 * here that they exist in the topology
+			 */
+			for (Integer peerASN : oldAS.getPeers()) {
+				if (!prunedMap.containsKey(peerASN)) {
+					continue;
+				}
+				newAS.addPeer(prunedMap.get(peerASN));
+			}
+			for (Integer custASN : oldAS.getCustomers()) {
+				if (!prunedMap.containsKey(custASN)) {
+					continue;
+				}
+				newAS.addCustomer(prunedMap.get(custASN));
+			}
+		}
+
+		return prunedMap;
 	}
 }
