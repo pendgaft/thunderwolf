@@ -14,14 +14,18 @@ import java.io.*;
 public class ASTopoParser {
 
 	private String asRelFileName;
+	private String ipCountFileName;
 	private HashMap<Integer, AS> unprunedTopo;
+	private boolean hardFail;
 
-	public ASTopoParser(String asRelFile) {
+	public ASTopoParser(String asRelFile, String ipFile, boolean simRun) {
 		this.asRelFileName = asRelFile;
+		this.ipCountFileName = ipFile;
 		this.unprunedTopo = null;
+		this.hardFail = simRun;
 	}
-	
-	public HashMap<Integer, AS> getUnpruned(){
+
+	public HashMap<Integer, AS> getUnpruned() {
 		return this.unprunedTopo;
 	}
 
@@ -35,7 +39,7 @@ public class ASTopoParser {
 	 *             cidr file
 	 */
 	public HashMap<Integer, BGPSpeaker> doNetworkBuild(boolean singlePassPrune) throws IOException {
-		HashMap<Integer, AS> asMap = this.parseFile(this.asRelFileName + "-rel.txt", this.asRelFileName + "-ip.txt");
+		HashMap<Integer, AS> asMap = this.parseFile(this.asRelFileName, this.ipCountFileName);
 		this.unprunedTopo = asMap;
 
 		/*
@@ -77,37 +81,40 @@ public class ASTopoParser {
 		String pollString;
 		StringTokenizer pollToks;
 		int lhsASN, rhsASN, rel;
+		BufferedReader fBuff = null;
 
 		/*
 		 * Parse the cidr count file and use it to create the AS objects
 		 */
 		//TODO looks like the CIDR count is no longer used as we hand out networks in a slightly more complicated/interesting way
-		BufferedReader fBuff = new BufferedReader(new FileReader(cidrCountFile));
-		while (fBuff.ready()) {
-			pollString = fBuff.readLine().trim();
+		if (cidrCountFile != null) {
+			fBuff = new BufferedReader(new FileReader(cidrCountFile));
+			while (fBuff.ready()) {
+				pollString = fBuff.readLine().trim();
 
-			/*
-			 * ignore blanks
-			 */
-			if (pollString.length() == 0) {
-				continue;
+				/*
+				 * ignore blanks
+				 */
+				if (pollString.length() == 0) {
+					continue;
+				}
+
+				/*
+				 * Ignore comments
+				 */
+				if (pollString.charAt(0) == '#') {
+					continue;
+				}
+
+				/*
+				 * Tokenize and go, the file is of the form <ASN> <CIDR COUNT>
+				 */
+				StringTokenizer tokens = new StringTokenizer(pollString, " ");
+				int asn = Integer.parseInt(tokens.nextToken());
+				retMap.put(asn, new AS(asn, Integer.parseInt(tokens.nextToken())));
 			}
-
-			/*
-			 * Ignore comments
-			 */
-			if (pollString.charAt(0) == '#') {
-				continue;
-			}
-
-			/*
-			 * Tokenize and go, the file is of the form <ASN> <CIDR COUNT>
-			 */
-			StringTokenizer tokens = new StringTokenizer(pollString, " ");
-			int asn = Integer.parseInt(tokens.nextToken());
-			retMap.put(asn, new AS(asn, Integer.parseInt(tokens.nextToken())));
+			fBuff.close();
 		}
-		fBuff.close();
 
 		/*
 		 * Parse the relationship file and fill in accordingly

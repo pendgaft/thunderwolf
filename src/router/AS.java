@@ -63,25 +63,24 @@ public class AS {
 		} else if (myRelationToThem == AS.CUSTOMER_CODE) {
 			this.providers.add(otherAS.getASN());
 			otherAS.customers.add(this.getASN());
-		} else if (myRelationToThem == 3) {
+		} else if (myRelationToThem == 2) {
 			// ignore - comes from sib relationship in the file
 		} else {
-			throw new BGPException("Bad relation passed to add relation: "
-					+ myRelationToThem);
+			throw new BGPException("Bad relation passed to add relation: " + myRelationToThem);
 		}
 	}
-	
-	public void addCustomer(AS otherAS){
+
+	public void addCustomer(AS otherAS) {
 		this.customers.add(otherAS.getASN());
 		otherAS.providers.add(this.getASN());
 	}
-	
-	public void addPeer(AS otherAS){
+
+	public void addPeer(AS otherAS) {
 		this.peers.add(otherAS.getASN());
 		otherAS.peers.add(this.getASN());
 	}
-	
-	public void addProvider(AS otherAS){
+
+	public void addProvider(AS otherAS) {
 		this.providers.add(otherAS.getASN());
 		otherAS.customers.add(this.getASN());
 	}
@@ -147,6 +146,17 @@ public class AS {
 	}
 
 	/**
+	 * Setter for the number of CIDRs this AS has. Really shouldn't be called in
+	 * simulation, this is a helper method for parsing files and building
+	 * correct config files.
+	 * 
+	 * @param cidrCount - the number of CIDRs this AS originates
+	 */
+	public void setCIDRSize(int cidrCount) {
+		this.numberOfCIDRs = cidrCount;
+	}
+
+	/**
 	 * Method that returns the relationship between two ASes.
 	 * 
 	 * @param asn
@@ -173,9 +183,7 @@ public class AS {
 		if (ThunderWolf.FASTANDLOOSE) {
 			return AS.CUSTOMER_CODE;
 		} else {
-			throw new BGPException(
-					"Asked for relation on non-adj/non-self asn!  Me: "
-							+ this.asn + " Them: " + asn);
+			throw new BGPException("Asked for relation on non-adj/non-self asn!  Me: " + this.asn + " Them: " + asn);
 		}
 	}
 
@@ -192,8 +200,7 @@ public class AS {
 	 * @return - asn, size, and all relationships as a string
 	 */
 	public String printDebugString() {
-		String outStr = "AS: " + this.asn + " (size : " + this.numberOfCIDRs
-				+ ")\n";
+		String outStr = "AS: " + this.asn + " (size : " + this.numberOfCIDRs + ")\n";
 		outStr += "Customers: " + this.customers + "\n";
 		outStr += "Providers: " + this.providers + "\n";
 		outStr += "Peers: " + this.peers + "\n";

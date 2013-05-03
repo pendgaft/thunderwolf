@@ -321,7 +321,7 @@ public class BGPSpeaker {
 	}
 
 	private long calcTotalRuntime(int size) {
-		return 2 * SimEvent.SECOND_MULTIPLIER / 1000;
+		return size * 2 * SimEvent.SECOND_MULTIPLIER / 1000;
 	}
 
 	public void runForwardTo(long startTime, long stopTime) {

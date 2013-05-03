@@ -69,7 +69,7 @@ public class ThunderWolf {
 		 */
 		System.out.println("Creating router topology.");
 		start = System.currentTimeMillis();
-		ASTopoParser topoParse = new ASTopoParser(topologyFile);
+		ASTopoParser topoParse = new ASTopoParser(topologyFile + "-rel.txt", topologyFile + "-ip.txt", true);
 		if (myMode == Mode.REAL) {
 			this.routerMap = topoParse.doNetworkBuild(true);
 		} else {
