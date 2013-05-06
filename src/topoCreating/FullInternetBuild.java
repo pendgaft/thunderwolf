@@ -19,8 +19,9 @@ public class FullInternetBuild {
 		
 		ASTopoParser topParse = new ASTopoParser(FullInternetBuild.BASE_AS_REL_FILE, null, false);
 		HashMap<Integer, BGPSpeaker> startingMap = topParse.doNetworkBuild(false);
-		FullInternetBuild.incorpIPCount(BASE_IP_FILE, topParse.getUnpruned());
-
+		System.out.println("wtf: " + topParse.getUnpruned().size());
+		HashMap<Integer, AS> adjusted = FullInternetBuild.incorpIPCount(BASE_IP_FILE, topParse.getUnpruned());
+		System.out.println("sent back: " + adjusted.size());
 		
 		//HashMap<Integer, AS> asMap = new HashMap<Integer, AS>();
 		//for(int tASN: startingMap.keySet()){
@@ -29,18 +30,21 @@ public class FullInternetBuild {
 		
 		//HashMap<Integer, AS> prunedMap = FullInternetBuild.pruneTopo(asMap);
 		//HashMap<Integer, AS> secondPruneMap = FullInternetBuild.pruneTopo(prunedMap);
-		FullInternetBuild.dumpToFile(topParse.getUnpruned());
+		FullInternetBuild.dumpToFile(adjusted);
 	}
 	
 	private static void dumpToFile(HashMap<Integer, AS> asMap) throws IOException{
 		BufferedWriter outFile = new BufferedWriter(new FileWriter(FullInternetBuild.OUT_FILE + "-rel.txt"));
 		
+		long count = 0;
 		for(AS tAS: asMap.values()){
 			for(int tNeighbor: tAS.getNeighbors()){
 				outFile.write("" + tAS.getASN() + "|" + tNeighbor + "|" + tAS.getRel(tNeighbor) + "\n");
+				count++;
 			}
 		}
 		outFile.close();
+		System.out.println("line count: " + count);
 		
 		outFile = new BufferedWriter(new FileWriter(FullInternetBuild.OUT_FILE + "-ip.txt"));
 		for(AS tAS: asMap.values()){
@@ -85,7 +89,7 @@ public class FullInternetBuild {
 			for(int tCust: oldAS.getCustomers()){
 				if(toRemove.contains(tCust)){
 					continue;
-				}
+				}void
 				
 				tAS.addCustomer(startingMap.get(tCust));
 			}
@@ -99,12 +103,14 @@ public class FullInternetBuild {
 			for(int tProv: oldAS.getProviders()){
 				tAS.addProvider(startingMap.get(tProv));
 			}
-		}
+		}ger> keySet = topo.keySet();
+		keySet.r
 		
 		return retMap;
 	}
 	
-	private static void incorpIPCount(String ipCountFile, HashMap<Integer, AS> topo) throws IOException{
+	private static HashMap<Integer, AS> incorpIPCount(String ipCountFile, HashMap<Integer, AS> topo) throws IOException{
+		HashMap<Integer, AS> retMap = new HashMap<Integer, AS>();
 		int noASCount = 0;
 		int totalIPCount = 0;
 		HashSet<Integer> seenASes = new HashSet<Integer>();
@@ -129,12 +135,18 @@ public class FullInternetBuild {
 				continue;
 			}
 			
-			topo.get(asn).setCIDRSize(ipCount);
+			AS tAS = topo.get(asn);
+			tAS.setCIDRSize(ipCount);
 			seenASes.add(asn);
+			retMap.put(tAS.getASN(), tAS);
 		}
 		
 		Set<Integer> keySet = topo.keySet();
 		keySet.removeAll(seenASes);
+		
+		for(int tASN: keySet){
+			retMap.put(tASN, topo.get(tASN));
+		}
 		
 		System.out.println("IP Integration Summary:");
 		System.out.println("Total IP blocks: " + totalIPCount);
@@ -142,5 +154,6 @@ public class FullInternetBuild {
 		System.out.println("Un-assigned IP blocks: " + noASCount);
 		System.out.println("Non adjusted ASes: " + keySet.size());
 		
+		return retMap;
 	}
 }
