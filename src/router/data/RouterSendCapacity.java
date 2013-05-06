@@ -1,15 +1,18 @@
 package router.data;
 
-import bgp.BGPUpdate;
-
 public class RouterSendCapacity {
 
 	private long cpuTimeGiven;
-	private long freeBufferSpace;
+	/**
+	 * This is the buffer space that a router has to accept incoming updates in
+	 * terms of UPDATES not actual raw bytes (since that is how CISCO does it)
+	 * there is a bit of a pain here since we can then fall back to a network
+	 * buffer, which IS done in terms of raw bytes
+	 */
+	private int freeBufferSpace;
 	private boolean zeroWindowing;
 
-	public RouterSendCapacity(long cpuTime, long freeBufferSpace,
-			boolean zeroWindowing) {
+	public RouterSendCapacity(long cpuTime, int freeBufferSpace, boolean zeroWindowing) {
 		super();
 		this.cpuTimeGiven = cpuTime;
 		this.freeBufferSpace = freeBufferSpace;
@@ -20,7 +23,7 @@ public class RouterSendCapacity {
 		return this.cpuTimeGiven;
 	}
 
-	public long getFreeBufferSpace() {
+	public int getFreeBufferSpace() {
 		return freeBufferSpace;
 	}
 
@@ -28,16 +31,12 @@ public class RouterSendCapacity {
 		return zeroWindowing;
 	}
 
-	public void sendUpdate(BGPUpdate update) {
+	public void sendUpdate(long ttc, int size) {
 		boolean processed = this.cpuTimeGiven > 0;
 
 		if (processed) {
-			/*
-			 * ghetto hack to compute the base TTC
-			 */
-			long routeTTC = update.estTimeToComplete(1, 1.0);
-			if (this.cpuTimeGiven > routeTTC) {
-				this.cpuTimeGiven -= routeTTC;
+			if (this.cpuTimeGiven > ttc) {
+				this.cpuTimeGiven -= ttc;
 			} else {
 				processed = false;
 				this.cpuTimeGiven = 0;
@@ -45,7 +44,7 @@ public class RouterSendCapacity {
 		}
 
 		if (!processed) {
-			this.freeBufferSpace -= update.getWireSize();
+			this.freeBufferSpace -= size;
 		}
 	}
 }

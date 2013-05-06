@@ -38,7 +38,8 @@ public class BGPSpeaker {
 
 	private static boolean DEBUG = false;
 	private static final long MRAI_LENGTH = 30 * SimEvent.SECOND_MULTIPLIER;
-	private static final long QUEUE_SIZE = 10000;
+
+	private static final int QUEUE_SIZE = 1000;
 	private static final int MAX_ROUTER_SIZE = 8;
 
 	/**
@@ -194,6 +195,7 @@ public class BGPSpeaker {
 		 * Figure out exactly how much CPU time this queue is gettting, based on
 		 * currently running queues.
 		 */
+		//TODO this currently isn't being used (up to the next comment block)
 		long fractionOfTimeMine = BGPSpeaker.MRAI_LENGTH;
 		int runningQueues;
 		if (this.isConfederation) {
@@ -206,7 +208,6 @@ public class BGPSpeaker {
 		}
 		fractionOfTimeMine = (long) Math.floor(fractionOfTimeMine / runningQueues);
 
-		// TODO think on this when you're not on a plane
 		/*
 		 * Ohhhkay, shitty approximation time gogo, so we can compute (and waste
 		 * a ton of CPU cycles doing it, exactly how long it will take to clear
@@ -219,15 +220,13 @@ public class BGPSpeaker {
 		 * sure how much that will change things in the long run, but it is a
 		 * quite larger perf improvement.
 		 */
-		long memSpace = 0;
+		int bufferSpace = BGPSpeaker.QUEUE_SIZE;
 		LinkedList<BGPUpdate> queueToListGo = (LinkedList<BGPUpdate>) this.incUpdateQueues.get(sendingASN);
-		for (BGPUpdate tUpdate : queueToListGo) {
-			memSpace += tUpdate.getWireSize();
-		}
-		memSpace = BGPSpeaker.QUEUE_SIZE - memSpace;
+		bufferSpace -= queueToListGo.size();
 
 		// TODO determine if we're bouncing between a zero window and not
-		return new RouterSendCapacity(fractionOfTimeMine, memSpace, false);
+		//FIXME this is a work in progress....
+		return new RouterSendCapacity(0, bufferSpace, false);
 	}
 
 	/**
@@ -243,9 +242,14 @@ public class BGPSpeaker {
 
 				for (int tDest : this.dirtyDests.get(tPeer)) {
 					handled.add(tDest);
-					this.sendUpdate(tDest, tPeer, currentTime);
+					//FIXME there is an issue here with withdrawl vs no actual route being sent...
+					BGPRoute tRoute = this.sendUpdate(tDest, tPeer, currentTime);
+					if (tRoute == null) {
+						continue;
+					}
+					sendCap.sendUpdate(this.calcTotalRuntime(tRoute.getSize()), tRoute.getSize());
 
-					if (sendCap.getCPUTime() == 0 && sendCap.getFreeBufferSpace() <= 0) {
+					if (sendCap.getCPUTime() <= 0 && sendCap.getFreeBufferSpace() <= 0) {
 						break;
 					}
 				}
@@ -279,12 +283,9 @@ public class BGPSpeaker {
 	 * @param incRoute
 	 *            - the route being advertised
 	 */
-	public boolean advPath(BGPRoute incRoute, long currentTime) {
+	public void advPath(BGPRoute incRoute, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute.getNextHop(this.getASN()));
 		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this.calcTotalRuntime(incRoute.getSize())));
-
-		// TODO base this off of route size
-		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
 	}
 
 	/**
@@ -312,12 +313,10 @@ public class BGPSpeaker {
 	 * @param dest
 	 *            - the destination of the route withdrawn
 	 */
-	public boolean withdrawPath(int withdrawingAS, int dest, long currentTime) {
+	public void withdrawPath(int withdrawingAS, int dest, long currentTime) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
-		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS,
-				this.calcTotalRuntime(this.adjInRib.get(withdrawingAS).get(dest).getSize())));
-
-		return incQueue.size() < BGPSpeaker.QUEUE_SIZE;
+		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this.calcTotalRuntime(this.adjInRib.get(
+				withdrawingAS).get(dest).getSize())));
 	}
 
 	private long calcTotalRuntime(int size) {
@@ -519,21 +518,20 @@ public class BGPSpeaker {
 	 *            - the destination of the route we need to advertise a change
 	 *            in
 	 */
-	private boolean sendUpdate(int dest, int peer, long currentTime) {
+	private BGPRoute sendUpdate(int dest, int peer, long currentTime) {
 		if (this.adjOutRib.get(dest) == null) {
 			this.adjOutRib.put(dest, new HashSet<BGPSpeaker>());
 		}
 
 		boolean prevAdvedTo = this.adjOutRib.get(dest).contains(peer);
 		boolean newAdvTo = false;
-		boolean okToAdvMore = true;
 		BGPRoute pathToAdv = this.outRib.get(dest);
 
 		if (pathToAdv != null) {
 			int nextHop = this.locRib.get(dest).getNextHop(this.getASN());
 
 			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN() || (this.myAS.getRel(nextHop) == 1)) {
-				okToAdvMore = this.peers.get(peer).advPath(pathToAdv, currentTime);
+				this.peers.get(peer).advPath(pathToAdv, currentTime);
 				newAdvTo = true;
 
 				if (DEBUG) {
@@ -544,10 +542,10 @@ public class BGPSpeaker {
 
 		if (prevAdvedTo && !newAdvTo) {
 			this.adjOutRib.get(dest).remove(peer);
-			okToAdvMore = this.peers.get(peer).withdrawPath(this.getASN(), dest, currentTime);
+			this.peers.get(peer).withdrawPath(this.getASN(), dest, currentTime);
 		}
 
-		return okToAdvMore;
+		return pathToAdv;
 	}
 
 	/**
