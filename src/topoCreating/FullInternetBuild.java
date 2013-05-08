@@ -19,7 +19,7 @@ public class FullInternetBuild {
 		
 		ASTopoParser topParse = new ASTopoParser(FullInternetBuild.BASE_AS_REL_FILE, null, false);
 		HashMap<Integer, BGPSpeaker> startingMap = topParse.doNetworkBuild(false);
-		System.out.println("wtf: " + topParse.getUnpruned().size());
+		System.out.println("original parse: " + topParse.getUnpruned().size());
 		HashMap<Integer, AS> adjusted = FullInternetBuild.incorpIPCount(BASE_IP_FILE, topParse.getUnpruned());
 		System.out.println("sent back: " + adjusted.size());
 		
@@ -39,7 +39,10 @@ public class FullInternetBuild {
 		long count = 0;
 		for(AS tAS: asMap.values()){
 			for(int tNeighbor: tAS.getNeighbors()){
-				outFile.write("" + tAS.getASN() + "|" + tNeighbor + "|" + tAS.getRel(tNeighbor) + "\n");
+				/*
+				 * THE SIGN FLIP IS CORRECT.  getRel returns their relationship to us, we want our relationship to them!!!!
+				 */
+				outFile.write("" + tAS.getASN() + "|" + tNeighbor + "|" + (tAS.getRel(tNeighbor) * -1) + "\n");
 				count++;
 			}
 		}

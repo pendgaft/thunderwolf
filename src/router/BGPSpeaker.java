@@ -530,7 +530,7 @@ public class BGPSpeaker {
 		if (pathToAdv != null) {
 			int nextHop = this.locRib.get(dest).getNextHop(this.getASN());
 
-			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN() || (this.myAS.getRel(nextHop) == 1)) {
+			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN() || (this.myAS.getRel(nextHop) == AS.CUSTOMER_CODE)) {
 				this.peers.get(peer).advPath(pathToAdv, currentTime);
 				newAdvTo = true;
 

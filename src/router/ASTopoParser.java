@@ -16,7 +16,14 @@ public class ASTopoParser {
 	private String asRelFileName;
 	private String ipCountFileName;
 	private HashMap<Integer, AS> unprunedTopo;
+	private HashMap<Integer, AS> prunedTopo;
 	private boolean hardFail;
+	
+	public static void main(String args[]) throws IOException{
+		ASTopoParser test = new ASTopoParser("whole-internet-rel.txt", "whole-internet-ip.txt", true);
+		HashMap<Integer, BGPSpeaker> resultOfBuild = test.doNetworkBuild(true);
+		System.out.println("size: " + resultOfBuild.size());
+	}
 
 	public ASTopoParser(String asRelFile, String ipFile, boolean simRun) {
 		this.asRelFileName = asRelFile;
@@ -39,21 +46,24 @@ public class ASTopoParser {
 	 *             cidr file
 	 */
 	public HashMap<Integer, BGPSpeaker> doNetworkBuild(boolean singlePassPrune) throws IOException {
-		HashMap<Integer, AS> asMap = this.parseFile(this.asRelFileName, this.ipCountFileName);
-		this.unprunedTopo = asMap;
+		this.unprunedTopo = this.parseFile(this.asRelFileName, this.ipCountFileName);
+		System.out.println("unpruned size: " + this.unprunedTopo.size());
 
 		/*
 		 * If we are suppose to do a prune of the ASes do it here please
 		 */
 		if (singlePassPrune) {
-			asMap = this.doNetworkPrune();
+			this.prunedTopo = this.doNetworkPrune();
+		} else{
+			this.prunedTopo =this.unprunedTopo;
 		}
+		System.out.println("pruned size: " + this.prunedTopo.size());
 
 		/*
 		 * Build the actual routers, pass a reference to the router map itself
 		 */
 		HashMap<Integer, BGPSpeaker> routerMap = new HashMap<Integer, BGPSpeaker>();
-		for (AS tAS : asMap.values()) {
+		for (AS tAS : this.prunedTopo.values()) {
 			routerMap.put(tAS.getASN(), new BGPSpeaker(tAS, routerMap));
 		}
 
@@ -169,11 +179,14 @@ public class ASTopoParser {
 	private HashMap<Integer, AS> doNetworkPrune() {
 		HashMap<Integer, AS> prunedMap = new HashMap<Integer, AS>();
 
+		int counter = 0;
 		for (AS tAS : this.unprunedTopo.values()) {
 			if (tAS.getCustomers().size() > 0) {
+				counter++;
 				prunedMap.put(tAS.getASN(), new AS(tAS.getASN(), tAS.getCIDRSize()));
 			}
 		}
+		System.out.println("counter size: " + counter);
 
 		/*
 		 * Build the relations for the deep copy objects
