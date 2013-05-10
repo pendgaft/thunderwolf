@@ -71,7 +71,9 @@ public class ThunderWolf {
 		start = System.currentTimeMillis();
 		ASTopoParser topoParse = new ASTopoParser(topologyFile + "-rel.txt", topologyFile + "-ip.txt", true);
 		if (myMode == Mode.REAL) {
-			this.routerMap = topoParse.doNetworkBuild(true);
+			//XXX currently the real file is pruned
+			//this.routerMap = topoParse.doNetworkBuild(true);
+			this.routerMap = topoParse.doNetworkBuild(false);
 		} else {
 			this.routerMap = topoParse.doNetworkBuild(false);
 		}
