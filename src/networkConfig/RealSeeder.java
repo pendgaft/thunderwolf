@@ -36,17 +36,18 @@ public class RealSeeder extends NetworkSeeder {
 		 * ad-hoc-ish but it should be close enough without killing us in the
 		 * the memory department
 		 */
-		for(AS tAS: this.fullTopo.values()){
-			/*
-			 * If we're in the active topo skip this part
-			 */
-			if(super.topoMap.containsKey(tAS.getASN())){
-				continue;
-			}
-			
-			for(Integer tProv: tAS.getProviders()){
-				super.topoMap.get(tProv).advPath(new BGPRoute(tAS.getASN(), tAS.getCIDRSize()), 0);
-			}
-		}
+		//XXX turned off for now to sanity check mem usage
+//		for(AS tAS: this.fullTopo.values()){
+//			/*
+//			 * If we're in the active topo skip this part
+//			 */
+//			if(super.topoMap.containsKey(tAS.getASN())){
+//				continue;
+//			}
+//			
+//			for(Integer tProv: tAS.getProviders()){
+//				super.topoMap.get(tProv).advPath(new BGPRoute(tAS.getASN(), tAS.getCIDRSize()), 0);
+//			}
+//		}
 	}
 }
