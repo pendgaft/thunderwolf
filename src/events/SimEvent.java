@@ -8,12 +8,13 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	private long eventTime;
 
 	private int eventType;
-	
+
 	private BGPSpeaker myOwner;
 
 	public static final int ROUTER_PROCESS = 1;
 	public static final int MRAI_EVENT = 2;
-	
+	public static final int LOGGING_EVENT = 3;
+
 	public static final long SECOND_MULTIPLIER = 1000;
 
 	public SimEvent(long eTime, int eType, BGPSpeaker owner) {
@@ -23,6 +24,8 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	}
 
 	public abstract void handleEvent(SimLogger theLogger);
+	
+	public abstract SimEvent repopulate();
 
 	public long getEventTime() {
 		return this.eventTime;
@@ -31,8 +34,8 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	public int getEventType() {
 		return this.eventType;
 	}
-	
-	public BGPSpeaker getOwner(){
+
+	public BGPSpeaker getOwner() {
 		return this.myOwner;
 	}
 
@@ -46,28 +49,45 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 			return 1;
 		}
 	}
-	
-	public String toString(){
+
+	public String toString() {
 		StringBuilder strBuilder = new StringBuilder();
-		strBuilder.append("Event type: " );
-		
-		if(this.eventType == SimEvent.MRAI_EVENT){
+		strBuilder.append("Event type: ");
+
+		if (this.eventType == SimEvent.MRAI_EVENT) {
 			strBuilder.append("MRAI");
-		} else if(this.eventType == SimEvent.ROUTER_PROCESS){
+		} else if (this.eventType == SimEvent.ROUTER_PROCESS) {
 			strBuilder.append("Process");
+		} else if (this.eventType == SimEvent.LOGGING_EVENT) {
+			strBuilder.append("Logging");
 		}
-		
+
 		strBuilder.append(" Owner: ");
-		strBuilder.append(Integer.toString(this.myOwner.getASN()));
+		if (this.myOwner != null) {
+			strBuilder.append(Integer.toString(this.myOwner.getASN()));
+		} else {
+			strBuilder.append("Simulator");
+		}
 		return strBuilder.toString();
 	}
-	
-	public int hashCode(){
-		return this.myOwner.getASN() + this.eventType * 100000 + (int)this.eventTime;
+
+	public int hashCode() {
+		int salt = -1;
+		if(this.myOwner != null){
+			salt = this.myOwner.getASN();
+		}
+		return salt + this.eventType * 100000 + (int) this.eventTime;
 	}
-	
-	public boolean equals(Object rhs){
-		SimEvent rhsEvent = (SimEvent)rhs;
-		return rhsEvent.getOwner().getASN() == this.getOwner().getASN() && this.eventType == rhsEvent.eventType && this.eventTime == rhsEvent.eventTime;
+
+	public boolean equals(Object rhs) {
+		SimEvent rhsEvent = (SimEvent) rhs;
+		boolean ownerTest = false;
+		if(this.myOwner == null){
+			ownerTest = (rhsEvent.myOwner == null);
+		}else{
+			ownerTest = rhsEvent.getOwner().getASN() == this.getOwner().getASN();
+		}
+		return ownerTest && this.eventType == rhsEvent.eventType
+				&& this.eventTime == rhsEvent.eventTime;
 	}
 }
