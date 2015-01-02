@@ -1,5 +1,8 @@
 package bgp;
 
+import java.util.List;
+import java.util.LinkedList;
+
 /**
  * Class that represents a BGP update message. In C this would be a struct that
  * contains a union based on if it is an explicit withdrawal or an advertisement
@@ -32,8 +35,17 @@ public class BGPUpdate {
 	 */
 	private BGPRoute advRoute;
 
-	private long completedRuntime;
-	private long totalRuntime;
+	private boolean bgpProcessed;
+	//TODO sendRate is a terrible named, please refactor
+	private double sendRate;
+	private long estCompletion;
+
+	private int availToSendSize;
+	private int completedSize;
+	private int totalSize;
+
+	private BGPUpdate parentUpdate;
+	private List<BGPUpdate> childUpdates;
 
 	/**
 	 * Static method to create an advertisement update, used when a viable path
@@ -44,8 +56,8 @@ public class BGPUpdate {
 	 *            withdrawal).
 	 * @return - the update object that represents this
 	 */
-	public static BGPUpdate buildAdvertisement(BGPRoute advRoute, long runtime) {
-		return new BGPUpdate(advRoute, runtime);
+	public static BGPUpdate buildAdvertisement(BGPRoute advRoute) {
+		return new BGPUpdate(advRoute);
 	}
 
 	/**
@@ -57,9 +69,8 @@ public class BGPUpdate {
 	 *            - our (the withdrawaler)'s ASN
 	 * @return - the update object that represents this
 	 */
-	public static BGPUpdate buildWithdrawal(int withDest, int updateSrc,
-			long runtime) {
-		return new BGPUpdate(withDest, updateSrc, runtime);
+	public static BGPUpdate buildWithdrawal(int withDest, int updateSrc, int size) {
+		return new BGPUpdate(withDest, updateSrc, size);
 	}
 
 	/**
@@ -68,10 +79,19 @@ public class BGPUpdate {
 	 * @param path
 	 *            - the path we're advertising
 	 */
-	private BGPUpdate(BGPRoute path, long runtime) {
+	private BGPUpdate(BGPRoute path) {
 		this.advRoute = path;
 		this.withdrawal = false;
-		this.totalRuntime = runtime;
+
+		this.totalSize = path.getSize();
+		this.availToSendSize = 0;
+		this.completedSize = 0;
+
+		this.parentUpdate = null;
+		this.childUpdates = null;
+		this.bgpProcessed = false;
+		this.sendRate = 0.0;
+		this.estCompletion = Long.MAX_VALUE;
 	}
 
 	/**
@@ -80,11 +100,19 @@ public class BGPUpdate {
 	 * @param withdrawalDest
 	 * @param updateSrc
 	 */
-	private BGPUpdate(int withdrawalDest, int updateSrc, long runtime) {
+	private BGPUpdate(int withdrawalDest, int updateSrc, int size) {
 		this.withdrawalDest = withdrawalDest;
 		this.withrdawalSource = updateSrc;
 		this.withdrawal = true;
-		this.totalRuntime = runtime;
+
+		this.totalSize = size;
+		this.availToSendSize = 0;
+		this.completedSize = 0;
+
+		this.parentUpdate = null;
+		this.childUpdates = null;
+		this.bgpProcessed = false;
+		this.sendRate = 0.0;
 	}
 
 	/**
@@ -108,8 +136,7 @@ public class BGPUpdate {
 		 * Sanity check that this isn't an explicit withdrawal message
 		 */
 		if (this.isWithdrawal()) {
-			throw new BGPException(
-					"Attempted to fetch path from explcit withdrawal!");
+			throw new BGPException("Attempted to fetch path from explcit withdrawal!");
 		}
 
 		return this.advRoute;
@@ -125,8 +152,7 @@ public class BGPUpdate {
 		 * Sanity check that this isn't an advertisement message
 		 */
 		if (!this.isWithdrawal()) {
-			throw new BGPException(
-					"Attempted to fetch withdrawal dest from an advertisement bearing update!");
+			throw new BGPException("Attempted to fetch withdrawal dest from an advertisement bearing update!");
 		}
 
 		return this.withdrawalDest;
@@ -144,22 +170,116 @@ public class BGPUpdate {
 		 * Sanity check that this isn't an advertisement message
 		 */
 		if (!this.isWithdrawal()) {
-			throw new BGPException(
-					"Attempted to fetch withdrawal dest from an advertisement bearing update!");
+			throw new BGPException("Attempted to fetch withdrawal dest from an advertisement bearing update!");
 		}
 
 		return this.withrdawalSource;
 	}
 
-	public boolean runTimeAhead(long time, int numberRunning) {
-		long fractionOfTime = (long) Math.ceil(time / numberRunning);
-		this.completedRuntime += fractionOfTime;
-		return this.completedRuntime - this.totalRuntime >= 0;
+	public void updateSendRate(double newSendRate) {
+		if (!this.bgpProcessed) {
+			throw new RuntimeException("Can't set a send rate when we've not bgp processed!");
+		}
+
+		this.sendRate = newSendRate;
 	}
 
-	public long estTimeToComplete(int numberRunning, double overheadPenalty) {
-		long timeLeft = this.totalRuntime - this.completedRuntime;
-		return Math.round(timeLeft * numberRunning * overheadPenalty);
+	private void pushAvailState(int newStateRcvd) {
+		if (newStateRcvd < 0) {
+			throw new RuntimeException("Can't add a negetive amount of state.");
+		}
+
+		this.availToSendSize += newStateRcvd;
+	}
+
+	public void advanceUpdate(long time) {
+		int stateSent = (int) (time * this.sendRate);
+		stateSent = Math.min(stateSent, this.availToSendSize);
+		this.availToSendSize -= stateSent;
+		this.completedSize += stateSent;
+
+		/*
+		 * If we've not advanced any state we can stop any recursive calls right
+		 * here...
+		 */
+		if (stateSent == 0) {
+			return;
+		}
+
+		if (this.childUpdates != null) {
+			for (BGPUpdate tChild : this.childUpdates) {
+				tChild.pushAvailState(stateSent);
+				tChild.advanceUpdate(time);
+			}
+		}
+	}
+
+	public long getEstimatedCompletionTime() {
+		return this.estCompletion;
+	}
+
+	public void updateEstCompletion() {
+		if (this.sendRate == 0.0) {
+			this.estCompletion = Long.MAX_VALUE;
+		} else {
+			long myEstComp = (long) ((this.totalSize - this.completedSize) / this.sendRate);
+			if (this.isDependancyRoot()) {
+				this.estCompletion = myEstComp;
+			} else {
+				this.estCompletion = Math.max(myEstComp, this.parentUpdate.getEstimatedCompletionTime());
+			}
+		}
+
+		for(BGPUpdate tDependant: this.childUpdates){
+			tDependant.updateEstCompletion();
+		}
+	}
+
+	public void fakeFinishedInternalUpdate() {
+		this.completedSize = this.totalSize;
+	}
+
+	public boolean finished() {
+		/*
+		 * Non-zero chance there is an odd edge condition where we could
+		 * overrun, make sure we handle that..
+		 */
+		return this.completedSize >= this.totalSize;
+	}
+
+	/*
+	 * Functions dealing with BGPUpdate dependancy graph
+	 */
+	public void setParent(BGPUpdate parent) {
+		if (parent != null && parent.finished()) {
+			parent = null;
+		}
+
+		this.parentUpdate = parent;
+
+		if (parent != null) {
+			parent.addChild(this);
+		}
+	}
+
+	public boolean isDependancyRoot() {
+		return this.parentUpdate == null;
+	}
+
+	private void addChild(BGPUpdate child) {
+		if (this.childUpdates == null) {
+			this.childUpdates = new LinkedList<BGPUpdate>();
+		}
+
+		this.childUpdates.add(child);
+	}
+
+	public void orphanChildren() {
+		if (this.childUpdates != null) {
+			for (BGPUpdate tChild : this.childUpdates) {
+				tChild.setParent(null);
+			}
+		}
 	}
 
 	/**
@@ -177,5 +297,17 @@ public class BGPUpdate {
 		} else {
 			return 44 + this.getAdvertisedRoute().getPathLength() * 4;
 		}
+	}
+
+	public boolean hasBeenProcessed() {
+		return this.bgpProcessed;
+	}
+
+	public void markAsProcessed() {
+		if (this.bgpProcessed) {
+			throw new RuntimeException("Marked and already processed update as processsed....");
+		}
+
+		this.bgpProcessed = true;
 	}
 }

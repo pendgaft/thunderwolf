@@ -2,8 +2,7 @@ package router;
 
 import java.util.*;
 
-import router.data.RouterSendCapacity;
-import events.SimEvent;
+import events.*;
 import bgp.BGPRoute;
 import bgp.BGPUpdate;
 
@@ -14,6 +13,7 @@ import bgp.BGPUpdate;
  * @author pendgaft
  * 
  */
+//FIXME thread saftey!
 public class BGPSpeaker {
 
 	private AS myAS;
@@ -24,13 +24,17 @@ public class BGPSpeaker {
 	private HashMap<Integer, List<BGPRoute>> inRib;
 	private HashMap<Integer, BGPRoute> outRib;
 	private HashMap<Integer, Set<BGPSpeaker>> adjOutRib;
+
 	private HashMap<Integer, BGPRoute> locRib;
+	private HashMap<Integer, BGPUpdate> locRibDependents;
 
 	private HashMap<Integer, HashSet<Integer>> dirtyDests;
 
-	private HashMap<Integer, Queue<BGPUpdate>> incUpdateQueues;
-	private long lastUpdateTime;
+	private HashMap<Integer, LinkedList<BGPUpdate>> incUpdateQueues;
+	private HashMap<Integer, LinkedList<BGPUpdate>> outgoingUpdateQueues;
 	private long nextMRAI;
+	private ProcessEvent nextProcessEvent;
+	private int nextProcessQueue;
 
 	private boolean isConfederation;
 	private HashMap<Integer, HashSet<Integer>> routerBindings = null;
@@ -39,7 +43,6 @@ public class BGPSpeaker {
 	private static boolean DEBUG = false;
 	private static final long MRAI_LENGTH = 30 * SimEvent.SECOND_MULTIPLIER;
 
-	private static final int QUEUE_SIZE = 1000;
 	private static final int MAX_ROUTER_SIZE = 8;
 
 	/**
@@ -60,20 +63,22 @@ public class BGPSpeaker {
 		this.outRib = new HashMap<Integer, BGPRoute>();
 		this.adjOutRib = new HashMap<Integer, Set<BGPSpeaker>>();
 		this.locRib = new HashMap<Integer, BGPRoute>();
+		this.locRibDependents = new HashMap<Integer, BGPUpdate>();
 
-		this.incUpdateQueues = new HashMap<Integer, Queue<BGPUpdate>>();
+		this.incUpdateQueues = new HashMap<Integer, LinkedList<BGPUpdate>>();
+		this.outgoingUpdateQueues = new HashMap<Integer, LinkedList<BGPUpdate>>();
 		this.dirtyDests = new HashMap<Integer, HashSet<Integer>>();
 
 		/*
 		 * Setup the queues, including the odd "internal" queue
 		 */
 		for (int tASN : this.myAS.getNeighbors()) {
-			this.incUpdateQueues.put(tASN, new LinkedList<BGPUpdate>());
 			this.dirtyDests.put(tASN, new HashSet<Integer>());
 		}
 		this.incUpdateQueues.put(this.getASN(), new LinkedList<BGPUpdate>());
-		this.lastUpdateTime = 0;
 		this.nextMRAI = 0;
+		this.nextProcessEvent = new ProcessEvent(Long.MAX_VALUE, this);
+		this.nextProcessQueue = -1;
 
 		/*
 		 * Deal with confederations of routers if we need to
@@ -98,6 +103,14 @@ public class BGPSpeaker {
 		}
 	}
 
+	public void setupSharedQueues() {
+		for (int tASN : this.myAS.getNeighbors()) {
+			LinkedList<BGPUpdate> myQueueToHim = new LinkedList<BGPUpdate>();
+			this.outgoingUpdateQueues.put(tASN, myQueueToHim);
+			this.peers.get(tASN).incUpdateQueues.put(this.myAS.getASN(), myQueueToHim);
+		}
+	}
+
 	/**
 	 * Public interface to force the router to handle one message in it's update
 	 * queue. This IS safe if the update queue is empty (the function) returns
@@ -106,9 +119,7 @@ public class BGPSpeaker {
 	 * but does not send advertisements, as that is handled at the time of MRAI
 	 * expiration.
 	 */
-	private void handleAdvertisement(Queue<BGPUpdate> queueToRun) {
-		BGPUpdate nextUpdate = queueToRun.poll();
-
+	private void handleAdvertisement(BGPUpdate nextUpdate) {
 		if (DEBUG) {
 			System.out.println("handling " + this.getASN());
 		}
@@ -176,57 +187,9 @@ public class BGPSpeaker {
 			destRibList.add(nextUpdate.getAdvertisedRoute());
 		}
 
-		recalcBestPath(dest);
-	}
-
-	public RouterSendCapacity computeSendCap(int sendingASN) {
-		/*
-		 * XXX so, here is the slight issue/abstraction with this. We don't
-		 * actually take into account queues that will start or finish
-		 * processing in this time window. Either could happen, so solutions for
-		 * this... Well, we could get around the "start up issue" by only
-		 * advertising till the next window in the neighborhood fires. (Holy
-		 * shit prob murder our performace.) The other one we would have to
-		 * compute if a queue finishes (pre-compute & save? compute twice?, and
-		 * then if so _when_ it finishes, and adjust accordingly).
-		 */
-
-		/*
-		 * Figure out exactly how much CPU time this queue is gettting, based on
-		 * currently running queues.
-		 */
-		//TODO this currently isn't being used (up to the next comment block)
-		long fractionOfTimeMine = BGPSpeaker.MRAI_LENGTH;
-		int runningQueues;
-		if (this.isConfederation) {
-			runningQueues = this.countActiveQueues(this.asToRouterGroup.get(sendingASN));
-		} else {
-			runningQueues = this.countActiveQueues(-1);
+		if (this.recalcBestPath(dest)) {
+			this.locRibDependents.put(dest, nextUpdate);
 		}
-		if (this.incUpdateQueues.get(sendingASN).isEmpty()) {
-			runningQueues++;
-		}
-		fractionOfTimeMine = (long) Math.floor(fractionOfTimeMine / runningQueues);
-
-		/*
-		 * Ohhhkay, shitty approximation time gogo, so we can compute (and waste
-		 * a ton of CPU cycles doing it, exactly how long it will take to clear
-		 * the buffer, subtract that, from the process time, then fill the
-		 * buffer, etc, etc. Alternatively, we can play this game, we don't
-		 * worry about the state now, and we let the buffer state be how it is,
-		 * don't worry about it. And each time will fill the buffer as full as
-		 * we can. This works out correctly in a steady state. Again, check
-		 * this, and in the non-steady state case we lag behind by one MRAI. Not
-		 * sure how much that will change things in the long run, but it is a
-		 * quite larger perf improvement.
-		 */
-		int bufferSpace = BGPSpeaker.QUEUE_SIZE;
-		LinkedList<BGPUpdate> queueToListGo = (LinkedList<BGPUpdate>) this.incUpdateQueues.get(sendingASN);
-		bufferSpace -= queueToListGo.size();
-
-		// TODO determine if we're bouncing between a zero window and not
-		//FIXME this is a work in progress....
-		return new RouterSendCapacity(0, bufferSpace, false);
 	}
 
 	/**
@@ -237,24 +200,11 @@ public class BGPSpeaker {
 
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
-				RouterSendCapacity sendCap = this.peers.get(tPeer).computeSendCap(this.myAS.getASN());
-				HashSet<Integer> handled = new HashSet<Integer>();
-
 				for (int tDest : this.dirtyDests.get(tPeer)) {
-					handled.add(tDest);
-					//FIXME there is an issue here with withdrawl vs no actual route being sent...
-					BGPRoute tRoute = this.sendUpdate(tDest, tPeer, currentTime);
-					if (tRoute == null) {
-						continue;
-					}
-					sendCap.sendUpdate(this.calcTotalRuntime(tRoute.getSize()), tRoute.getSize());
-
-					if (sendCap.getCPUTime() <= 0 && sendCap.getFreeBufferSpace() <= 0) {
-						break;
-					}
+					this.sendUpdate(tDest, tPeer, currentTime);
 				}
 
-				this.dirtyDests.get(tPeer).removeAll(handled);
+				this.dirtyDests.get(tPeer).clear();
 			}
 		}
 
@@ -268,24 +218,13 @@ public class BGPSpeaker {
 		this.nextMRAI = currentTime + BGPSpeaker.MRAI_LENGTH;
 	}
 
+	//TODO move this to the constructor and delete this method for var saftey
 	public void setOpeningMRAI(long time) {
 		this.nextMRAI = time;
 	}
 
-	public long getNextMRAI() {
-		return this.nextMRAI;
-	}
-
-	/**
-	 * Public interface to be used by OTHER BGP Speakers to advertise a change
-	 * in a route to a destination.
-	 * 
-	 * @param incRoute
-	 *            - the route being advertised
-	 */
-	public void advPath(BGPRoute incRoute, long currentTime) {
-		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(incRoute.getNextHop(this.getASN()));
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this.calcTotalRuntime(incRoute.getSize())));
+	public MRAIFireEvent getNextMRAI() {
+		return new MRAIFireEvent(this.nextMRAI, this);
 	}
 
 	/**
@@ -297,71 +236,116 @@ public class BGPSpeaker {
 	 * @param incRoute
 	 *            - the route being advertised
 	 */
-	public boolean selfInstallPath(BGPRoute incRoute, long currentTime) {
+	public boolean selfInstallPath(BGPRoute incRoute) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(this.myAS.getASN());
-		incQueue.add(BGPUpdate.buildAdvertisement(incRoute, this.calcTotalRuntime(incRoute.getSize())));
+		BGPUpdate selfUpdate = BGPUpdate.buildAdvertisement(incRoute);
+		selfUpdate.fakeFinishedInternalUpdate();
+		incQueue.add(selfUpdate);
 
 		return true;
 	}
 
-	/**
-	 * addedEvent Public interface to be used by OTHER BGPSpeakers to withdraw a
-	 * route to this router.
-	 * 
-	 * @param peer
-	 *            - the peer sending the withdrawl
-	 * @param dest
-	 *            - the destination of the route withdrawn
-	 */
-	public void withdrawPath(int withdrawingAS, int dest, long currentTime) {
-		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(withdrawingAS);
-		incQueue.add(BGPUpdate.buildWithdrawal(dest, withdrawingAS, this.calcTotalRuntime(this.adjInRib.get(
-				withdrawingAS).get(dest).getSize())));
+	public void queueAdvance(long startTime, long endTime) {
+		this.runQueuesAhead(endTime - startTime, -1);
 	}
 
-	private long calcTotalRuntime(int size) {
-		return size * 2 * SimEvent.SECOND_MULTIPLIER / 1000;
+	public void radiateCleanup(int depth){
+		Set<Integer> targets = this.buildDepthSet(depth);
+		for(int tASN: targets){
+			this.peers.get(tASN).handleIncomingQueueCleanup();
+		}
+	}
+	
+	private Set<Integer> buildDepthSet(int depth){
+		HashSet<Integer> returnSet = new HashSet<Integer>();
+		HashSet<Integer> addSet = new HashSet<Integer>();
+		returnSet.add(this.getASN());
+		
+		for(int counter = 0; counter < depth; counter++){
+			addSet.clear();
+			for(int tASN: returnSet){
+				addSet.addAll(this.peers.get(tASN).getASObject().getNeighbors());
+			}
+			returnSet.addAll(addSet);
+		}
+		
+		return returnSet;
+	}
+	
+	private void handleIncomingQueueCleanup() {
+		//TODO at some point we should actually re-visit router groups, now isn't the time though
+		this.prepQueues(-1);
+		this.setQueueSpeeds(-1);
 	}
 
-	public void runForwardTo(long startTime, long stopTime) {
-		this.internalRunForwardTo(startTime, stopTime, -1);
-		this.lastUpdateTime = stopTime;
+	public void updateEstimatedCompletionTimes() {
+		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			if (tQueue.isEmpty()) {
+				continue;
+			}
+
+			if (tQueue.peek().isDependancyRoot()) {
+				tQueue.peek().updateEstCompletion();
+			}
+		}
 	}
 
-	private void internalRunForwardTo(long startTime, long stopTime, int routerGroup) {
+	public ProcessEvent checkIfProcessingEventNeedsUpdating() {
+		ProcessEvent evict = null;
 
 		/*
-		 * This should never happen, make sure it does not
+		 * Update if our current next to process has slowed down
 		 */
-		if (startTime != this.lastUpdateTime) {
-			throw new RuntimeException("Time gap in cpu calc!\nASN: " + this.getASN() + " start time: " + startTime
-					+ " last update: " + this.lastUpdateTime);
+		if (this.nextProcessQueue != -1) {
+			if (this.nextProcessEvent.getEventTime() < this.incUpdateQueues.get(this.nextProcessQueue).peek()
+					.getEstimatedCompletionTime()) {
+				evict = this.nextProcessEvent;
+				this.nextProcessEvent = new ProcessEvent(this.incUpdateQueues.get(this.nextProcessQueue).peek()
+						.getEstimatedCompletionTime(), this);
+			}
 		}
 
-		long currentTime = startTime;
-		while (currentTime < stopTime) {
-			int activeQueues = this.countActiveQueues(routerGroup);
+		/*
+		 * Find out if there is a sooner to complete queue
+		 */
+		for (int tASN : this.incUpdateQueues.keySet()) {
+			Queue<BGPUpdate> tQueue = this.incUpdateQueues.get(tASN);
 
-			/*
-			 * Just break out of the loop if we're done
-			 */
-			if (activeQueues == 0) {
-				currentTime = stopTime;
-				break;
+			if (tQueue.isEmpty()) {
+				continue;
 			}
 
 			/*
-			 * Run ahead until we either hit the time horizon or a queue
-			 * finishes
+			 * If this queue is actually sooner make a new event
 			 */
-			long testTime = Math.min(this.computeNearestTTC(activeQueues, routerGroup), stopTime - currentTime);
-			this.runQueuesAhead(testTime, activeQueues, routerGroup);
-			currentTime += testTime;
+			if (this.nextProcessEvent.getEventTime() > tQueue.peek().getEstimatedCompletionTime()) {
+				if (evict == null) {
+					evict = this.nextProcessEvent;
+				}
+				this.nextProcessEvent = new ProcessEvent(tQueue.peek().getEstimatedCompletionTime(), this);
+				this.nextProcessQueue = tASN;
+			}
 		}
+
+		return evict;
 	}
 
-	private int countActiveQueues(int routerGroup) {
-		int active = 0;
+	public ProcessEvent getNextProcessEvent() {
+		return this.nextProcessEvent;
+	}
+
+	/**
+	 * Handles when we've finished a processing event, essentially it resets the
+	 * processing event to the end of the world and then uses existing machinery
+	 * to compute when the real next event is
+	 */
+	public void handleProcessingEventCompleted() {
+		this.nextProcessEvent = new ProcessEvent(Long.MAX_VALUE, this);
+		this.nextProcessQueue = -1;
+		this.checkIfProcessingEventNeedsUpdating();
+	}
+
+	private void prepQueues(int routerGroup) {
 		Set<Integer> peers = null;
 		if (routerGroup == -1) {
 			peers = this.incUpdateQueues.keySet();
@@ -370,25 +354,57 @@ public class BGPSpeaker {
 		}
 
 		for (int tASN : peers) {
-			if (!this.incUpdateQueues.get(tASN).isEmpty()) {
-				active++;
+			Queue<BGPUpdate> tQueue = this.incUpdateQueues.get(tASN);
+			/*
+			 * Don't run empty queues obvi
+			 */
+			if (tQueue.isEmpty()) {
+				continue;
+			}
+
+			BGPUpdate headOfQueue = tQueue.peek();
+
+			/*
+			 * Check if the head of queue is finished, if so murder it
+			 */
+			if (headOfQueue.finished()) {
+				/*
+				 * Orphan all of the children, as their dependancy is finished
+				 */
+				tQueue.peek().orphanChildren();
+
+				/*
+				 * If it's in the local rib dependancy, remove it, as it's
+				 * finished now
+				 */
+				int dest = -1;
+				if (headOfQueue.isWithdrawal()) {
+					dest = headOfQueue.getWithdrawnDest();
+				} else {
+					dest = headOfQueue.getAdvertisedRoute().getDest();
+				}
+
+				if (this.locRibDependents.get(dest).equals(headOfQueue)) {
+					this.locRibDependents.remove(dest);
+				}
+
+				tQueue.poll();
+			}
+
+			//XXX duplicate if queue empty continue seems sloppy, clean up?
+			if (tQueue.isEmpty()) {
+				continue;
+			}
+
+			headOfQueue = tQueue.peek();
+			if (!headOfQueue.hasBeenProcessed()) {
+				this.handleAdvertisement(tQueue.peek());
+				tQueue.peek().markAsProcessed();
 			}
 		}
-
-		return active;
 	}
 
-	private long computeNearestTTC(int numberRunning, int routerGroup) {
-		long smallestLeft = Long.MAX_VALUE;
-
-		/*
-		 * We can have an overhead penalty if we're advertising at the same time
-		 */
-		double overhead = 1.0;
-		if (!this.dirtyDests.isEmpty()) {
-			overhead = 1.5;
-		}
-
+	private void setQueueSpeeds(int routerGroup) {
 		Set<Integer> peers = null;
 		if (routerGroup == -1) {
 			peers = this.incUpdateQueues.keySet();
@@ -402,13 +418,40 @@ public class BGPSpeaker {
 				continue;
 			}
 
-			smallestLeft = Math.min(tQueue.peek().estTimeToComplete(numberRunning, overhead), smallestLeft);
+			tQueue.peek().updateSendRate(this.computeSendRate(tASN));
 		}
-
-		return smallestLeft;
 	}
 
-	private void runQueuesAhead(long timeDelta, int activeQueues, int routerGroup) {
+	//TODO router groups?
+	private double computeSendRate(int destPeerASN) {
+		int myActiveCount = this.countActiveQueues(-1);
+		int hisActiveCount = this.peers.get(destPeerASN).countActiveQueues(-1);
+
+		//TODO use active values in future?
+		return 0.5;
+	}
+
+	private int countActiveQueues(int routerGroup) {
+		int active = 0;
+		Set<Integer> peers = null;
+		if (routerGroup == -1) {
+			peers = this.incUpdateQueues.keySet();
+		} else {
+			peers = this.routerBindings.get(routerGroup);
+		}
+
+		for (int tASN : peers) {
+			//TODO isEmpty vs finished vs something else?
+			//FIXME thread safety issue in general with scanning queues and the queues themselves
+			if (!this.incUpdateQueues.get(tASN).isEmpty()) {
+				active++;
+			}
+		}
+
+		return active;
+	}
+
+	private void runQueuesAhead(long timeDelta, int routerGroup) {
 		Set<Integer> peers = null;
 		if (routerGroup == -1) {
 			peers = this.incUpdateQueues.keySet();
@@ -426,11 +469,11 @@ public class BGPSpeaker {
 			}
 
 			/*
-			 * Advance non-empty queues, if they finish handle the advertise at
-			 * the head
+			 * If the queue is a dependancy root, run it ahead, that will handle
+			 * all of our other queues
 			 */
-			if (tQueue.peek().runTimeAhead(timeDelta, activeQueues)) {
-				this.handleAdvertisement(tQueue);
+			if (tQueue.peek().isDependancyRoot()) {
+				tQueue.peek().advanceUpdate(timeDelta);
 			}
 		}
 	}
@@ -443,14 +486,14 @@ public class BGPSpeaker {
 	 * @param dest
 	 *            - the destination network that has had a route change
 	 */
-	private void recalcBestPath(int dest) {
+	private boolean recalcBestPath(int dest) {
 		boolean changed;
 
 		List<BGPRoute> possList = this.inRib.get(dest);
 		BGPRoute currentBest = this.pathSelection(possList);
 
 		BGPRoute currentInstall = this.locRib.get(dest);
-		changed = (currentInstall == null || !currentBest.equals(currentInstall));
+		changed = (currentInstall == null || !currentInstall.equals(currentBest));
 		this.locRib.put(dest, currentBest);
 
 		/*
@@ -470,6 +513,8 @@ public class BGPSpeaker {
 				}
 			}
 		}
+
+		return changed;
 	}
 
 	/**
@@ -530,8 +575,11 @@ public class BGPSpeaker {
 		if (pathToAdv != null) {
 			int nextHop = this.locRib.get(dest).getNextHop(this.getASN());
 
-			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN() || (this.myAS.getRel(nextHop) == AS.CUSTOMER_CODE)) {
-				this.peers.get(peer).advPath(pathToAdv, currentTime);
+			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN()
+					|| (this.myAS.getRel(nextHop) == AS.CUSTOMER_CODE)) {
+				BGPUpdate outUpdate = BGPUpdate.buildAdvertisement(pathToAdv);
+				outUpdate.setParent(this.locRibDependents.get(dest));
+				this.outgoingUpdateQueues.get(peer).add(outUpdate);
 				newAdvTo = true;
 
 				if (DEBUG) {
@@ -542,7 +590,10 @@ public class BGPSpeaker {
 
 		if (prevAdvedTo && !newAdvTo) {
 			this.adjOutRib.get(dest).remove(peer);
-			this.peers.get(peer).withdrawPath(this.getASN(), dest, currentTime);
+			BGPUpdate outUpdate = BGPUpdate.buildWithdrawal(dest, this.getASN(), this.peers.get(dest).getASObject()
+					.getCIDRSize());
+			outUpdate.setParent(this.locRibDependents.get(dest));
+			this.outgoingUpdateQueues.get(peer).add(outUpdate);
 		}
 
 		return pathToAdv;
@@ -646,26 +697,29 @@ public class BGPSpeaker {
 	 * 
 	 * @return
 	 */
-	// TODO str builder?
 	public String printBGPString(boolean detailed) {
-		String outStr = this.toString();
+		StringBuilder strFactory = new StringBuilder();
+		strFactory.append(this.toString());
 
-		outStr += "\nLocal RIB is:";
+		strFactory.append("\nLocal RIB is:");
 		for (BGPRoute tRoute : this.locRib.values()) {
-			outStr += "\n" + tRoute.toString();
+			strFactory.append("\n");
+			strFactory.append(tRoute.toString());
 		}
 
 		if (detailed) {
-			outStr += "\nIN RIB is:";
+			strFactory.append("\nIN RIB is:");
 			for (int tDest : this.inRib.keySet()) {
-				outStr += "\n  dest: " + tDest;
+				strFactory.append("\n  dest: ");
+				strFactory.append(tDest);
 				for (BGPRoute tRoute : this.inRib.get(tDest)) {
-					outStr += "\n" + tRoute.toString();
+					strFactory.append("\n");
+					strFactory.append(tRoute.toString());
 				}
 			}
 		}
 
-		return outStr;
+		return strFactory.toString();
 	}
 
 	/**
