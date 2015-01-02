@@ -159,6 +159,10 @@ public class BGPRoute {
 	 *         otherwise
 	 */
 	public boolean equals(BGPRoute rhs) {
+		if(rhs == null){
+			return false;
+		}
+		
 		/*
 		 * Fast O(1) checks for dest and size
 		 */
@@ -194,10 +198,6 @@ public class BGPRoute {
 		return this.toString().hashCode();
 	}
 	
-	/**
-	 * This should be used for TESTING ONLY!!!!
-	 * @return
-	 */
 	public List<Integer> fetchRawPath(){
 		return this.path;
 	}
