@@ -22,7 +22,7 @@ public class EvenSeed extends NetworkSeeder {
 	@Override
 	public void initialSeed() {
 		for (BGPSpeaker tAS : this.topoMap.values()) {
-			tAS.advPath(new BGPRoute(tAS.getASN(), 1), 0);
+			tAS.selfInstallPath(new BGPRoute(tAS.getASN(), 1));
 		}
 	}
 

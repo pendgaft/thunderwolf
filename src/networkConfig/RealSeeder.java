@@ -27,7 +27,7 @@ public class RealSeeder extends NetworkSeeder {
 		 * owns, assuming of course that those numbers are accurate
 		 */
 		for (BGPSpeaker tAS : this.topoMap.values()) {
-			tAS.advPath(new BGPRoute(tAS.getASN(), tAS.getASObject().getCIDRSize()), 0);
+			tAS.selfInstallPath(new BGPRoute(tAS.getASN(), tAS.getASObject().getCIDRSize()));
 		}
 
 		/*

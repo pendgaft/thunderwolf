@@ -43,7 +43,7 @@ public class SingleInjector extends NetworkSeeder {
 			for (int pathCounter = 0; pathCounter < this.pathLen - 1; pathCounter++) {
 				tRoute.appendASToPath(15000 + pathCounter);
 			}
-			injectorTarget.selfInstallPath(tRoute, 0);
+			injectorTarget.selfInstallPath(tRoute);
 		}
 
 	}

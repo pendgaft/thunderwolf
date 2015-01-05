@@ -49,7 +49,7 @@ public class MultiInjector extends NetworkSeeder {
 				for (int pathCounter = 0; pathCounter < this.pathLen - 1; pathCounter++) {
 					tRoute.appendASToPath(15000 + pathCounter);
 				}
-				tRouter.selfInstallPath(tRoute, 0);
+				tRouter.selfInstallPath(tRoute);
 			}
 		}
 
