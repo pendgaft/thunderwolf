@@ -3,10 +3,11 @@ package sim;
 import java.util.*;
 import java.io.*;
 
+import logging.SimLogger;
 import router.BGPSpeaker;
 import router.ASTopoParser;
 import networkConfig.*;
-import threading.BGPMaster;
+import threading.FlowDriver;
 
 public class ThunderWolf {
 
@@ -21,6 +22,7 @@ public class ThunderWolf {
 
 	protected HashMap<Integer, BGPSpeaker> routerMap = null;
 	private NetworkSeeder netSeeder = null;
+	private SimLogger logMaster = null;
 
 	protected enum Mode {
 		EVEN, INJECTOR, REAL
@@ -95,11 +97,26 @@ public class ThunderWolf {
 		} else {
 			throw new RuntimeException("Passed a mode to ThunderWolf Constructor that we do not know how to seed!");
 		}
+		this.netSeeder.initialSeed();
+		
+		/*
+		 * Build logging mechanisms
+		 */
+		try {
+			// TODO make this file name configurable
+			this.logMaster = new SimLogger("test", this.routerMap);
+			this.logMaster.setupStatPush();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.out.println("Logger setup failed, aborting.");
+			System.exit(2);
+		}
 	}
 
 	protected void runSimulation() throws IOException {
 		System.out.println("Firing Sim Trigger");
-		BGPMaster.driveSim(this.routerMap, this.netSeeder);
+		FlowDriver simDriver = new FlowDriver(this.routerMap, this.logMaster);
+		simDriver.run();
 	}
 
 }
