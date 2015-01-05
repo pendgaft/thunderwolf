@@ -6,7 +6,7 @@ import logging.SimLogger;
 
 public class LoggingEvent extends SimEvent {
 
-	public LoggingEvent(long time) {
+	public LoggingEvent(double time) {
 		super(time, SimEvent.LOGGING_EVENT, null);
 	}
 

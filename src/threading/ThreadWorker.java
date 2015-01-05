@@ -9,13 +9,13 @@ public class ThreadWorker implements Runnable {
 
 	private FlowDriver workSource;
 	private int myID;
-	private long lastTimeAdvance;
+	private double lastTimeAdvance;
 	private Set<BGPSpeaker> ownedNodes;
 
 	public ThreadWorker(FlowDriver daBoss, int id) {
 		this.workSource = daBoss;
 		this.myID = id;
-		this.lastTimeAdvance = 0;
+		this.lastTimeAdvance = 0.0;
 		this.ownedNodes = new HashSet<BGPSpeaker>();
 	}
 
@@ -32,7 +32,7 @@ public class ThreadWorker implements Runnable {
 				 * Wait for master to tell us we're moving forward, advance all
 				 * nodes...
 				 */
-				long nextTimePoint = this.workSource.getNextTimeAdvnace();
+				double nextTimePoint = this.workSource.getNextTimeAdvnace();
 				for (BGPSpeaker tChild : this.ownedNodes) {
 					tChild.queueAdvance(this.lastTimeAdvance, nextTimePoint);
 				}

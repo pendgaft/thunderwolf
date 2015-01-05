@@ -5,7 +5,7 @@ import logging.SimLogger;
 
 public abstract class SimEvent implements Comparable<SimEvent> {
 
-	private long eventTime;
+	private double eventTime;
 
 	private int eventType;
 
@@ -15,9 +15,9 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	public static final int MRAI_EVENT = 2;
 	public static final int LOGGING_EVENT = 3;
 
-	public static final long SECOND_MULTIPLIER = 1000;
+	public static final double SECOND_MULTIPLIER = 1000.0;
 
-	public SimEvent(long eTime, int eType, BGPSpeaker owner) {
+	public SimEvent(double eTime, int eType, BGPSpeaker owner) {
 		this.eventTime = eTime;
 		this.eventType = eType;
 		this.myOwner = owner;
@@ -27,7 +27,7 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	
 	public abstract SimEvent repopulate();
 
-	public long getEventTime() {
+	public double getEventTime() {
 		return this.eventTime;
 	}
 
@@ -40,7 +40,7 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	}
 
 	public int compareTo(SimEvent rhs) {
-		long diff = this.eventTime - rhs.eventTime;
+		double diff = this.eventTime - rhs.eventTime;
 		if (diff < 0) {
 			return -1;
 		} else if (diff == 0) {

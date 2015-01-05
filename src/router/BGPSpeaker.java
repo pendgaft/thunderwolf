@@ -32,7 +32,7 @@ public class BGPSpeaker {
 
 	private HashMap<Integer, LinkedList<BGPUpdate>> incUpdateQueues;
 	private HashMap<Integer, LinkedList<BGPUpdate>> outgoingUpdateQueues;
-	private long nextMRAI;
+	private double nextMRAI;
 	private ProcessEvent nextProcessEvent;
 	private int nextProcessQueue;
 
@@ -41,7 +41,7 @@ public class BGPSpeaker {
 	private HashMap<Integer, Integer> asToRouterGroup = null;
 
 	private static boolean DEBUG = false;
-	private static final long MRAI_LENGTH = 30 * SimEvent.SECOND_MULTIPLIER;
+	private static final double MRAI_LENGTH = 30.0 * SimEvent.SECOND_MULTIPLIER;
 
 	private static final int MAX_ROUTER_SIZE = 8;
 
@@ -76,7 +76,7 @@ public class BGPSpeaker {
 			this.dirtyDests.put(tASN, new HashSet<Integer>());
 		}
 		this.incUpdateQueues.put(this.getASN(), new LinkedList<BGPUpdate>());
-		this.nextMRAI = 0;
+		this.nextMRAI = 0.0;
 		this.nextProcessEvent = new ProcessEvent(Long.MAX_VALUE, this);
 		this.nextProcessQueue = -1;
 
@@ -196,12 +196,12 @@ public class BGPSpeaker {
 	 * Currently exposed interface which triggers an expiration of THIS ROUTER'S
 	 * MRAI timer, resulting in updates being sent to this router's peers.
 	 */
-	public synchronized void mraiExpire(long currentTime) {
+	public synchronized void mraiExpire() {
 
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
 				for (int tDest : this.dirtyDests.get(tPeer)) {
-					this.sendUpdate(tDest, tPeer, currentTime);
+					this.sendUpdate(tDest, tPeer);
 				}
 
 				this.dirtyDests.get(tPeer).clear();
@@ -209,17 +209,17 @@ public class BGPSpeaker {
 		}
 
 		if (DEBUG) {
-			System.out.println("MRAI fire at " + this.getASN() + " time " + currentTime);
+			System.out.println("MRAI fire at " + this.getASN() + " time " + this.nextMRAI);
 		}
 
 		/*
 		 * Update the MRAI time
 		 */
-		this.nextMRAI = currentTime + BGPSpeaker.MRAI_LENGTH;
+		this.nextMRAI += BGPSpeaker.MRAI_LENGTH;
 	}
 
 	//TODO move this to the constructor and delete this method for var saftey
-	public void setOpeningMRAI(long time) {
+	public void setOpeningMRAI(double time) {
 		this.nextMRAI = time;
 	}
 
@@ -245,33 +245,33 @@ public class BGPSpeaker {
 		return true;
 	}
 
-	public void queueAdvance(long startTime, long endTime) {
+	public void queueAdvance(double startTime, double endTime) {
 		this.runQueuesAhead(endTime - startTime, -1);
 	}
 
-	public void radiateCleanup(int depth){
+	public void radiateCleanup(int depth) {
 		Set<Integer> targets = this.buildDepthSet(depth);
-		for(int tASN: targets){
+		for (int tASN : targets) {
 			this.peers.get(tASN).handleIncomingQueueCleanup();
 		}
 	}
-	
-	private Set<Integer> buildDepthSet(int depth){
+
+	private Set<Integer> buildDepthSet(int depth) {
 		HashSet<Integer> returnSet = new HashSet<Integer>();
 		HashSet<Integer> addSet = new HashSet<Integer>();
 		returnSet.add(this.getASN());
-		
-		for(int counter = 0; counter < depth; counter++){
+
+		for (int counter = 0; counter < depth; counter++) {
 			addSet.clear();
-			for(int tASN: returnSet){
+			for (int tASN : returnSet) {
 				addSet.addAll(this.peers.get(tASN).getASObject().getNeighbors());
 			}
 			returnSet.addAll(addSet);
 		}
-		
+
 		return returnSet;
 	}
-	
+
 	private void handleIncomingQueueCleanup() {
 		//TODO at some point we should actually re-visit router groups, now isn't the time though
 		this.prepQueues(-1);
@@ -389,11 +389,13 @@ public class BGPSpeaker {
 				}
 
 				tQueue.poll();
-			}
 
-			//XXX duplicate if queue empty continue seems sloppy, clean up?
-			if (tQueue.isEmpty()) {
-				continue;
+				/*
+				 * If the queue is now empty we can move on to the next queue
+				 */
+				if (tQueue.isEmpty()) {
+					continue;
+				}
 			}
 
 			headOfQueue = tQueue.peek();
@@ -451,7 +453,7 @@ public class BGPSpeaker {
 		return active;
 	}
 
-	private void runQueuesAhead(long timeDelta, int routerGroup) {
+	private void runQueuesAhead(double timeDelta, int routerGroup) {
 		Set<Integer> peers = null;
 		if (routerGroup == -1) {
 			peers = this.incUpdateQueues.keySet();
@@ -563,7 +565,7 @@ public class BGPSpeaker {
 	 *            - the destination of the route we need to advertise a change
 	 *            in
 	 */
-	private BGPRoute sendUpdate(int dest, int peer, long currentTime) {
+	private BGPRoute sendUpdate(int dest, int peer) {
 		if (this.adjOutRib.get(dest) == null) {
 			this.adjOutRib.put(dest, new HashSet<BGPSpeaker>());
 		}

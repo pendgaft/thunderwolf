@@ -6,7 +6,7 @@ import logging.SimLogger;
 public class ProcessEvent extends SimEvent {
 	
 	
-	public ProcessEvent(long eventTime, BGPSpeaker owner) {
+	public ProcessEvent(double eventTime, BGPSpeaker owner) {
 		super(eventTime, SimEvent.ROUTER_PROCESS, owner);
 	}
 

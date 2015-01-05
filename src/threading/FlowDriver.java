@@ -12,7 +12,7 @@ public class FlowDriver implements Runnable {
 	private HashMap<Integer, BGPSpeaker> topo;
 	private PriorityBlockingQueue<SimEvent> eventQueue;
 
-	private long timeToMoveTo;
+	private double timeToMoveTo;
 
 	private Semaphore blockOnChildSem;
 	private Semaphore runForwardSem;
@@ -22,12 +22,12 @@ public class FlowDriver implements Runnable {
 	private SimLogger logMaster;
 
 	private static final int NUMBER_OF_THREADS = 2;
-	private static final long MAX_SIM_TIME = 60000;
+	private static final double MAX_SIM_TIME = 60000.0;
 
 	public FlowDriver(HashMap<Integer, BGPSpeaker> routingTopology, SimLogger logs) {
 		this.topo = routingTopology;
 		this.eventQueue = new PriorityBlockingQueue<SimEvent>();
-		this.timeToMoveTo = 0;
+		this.timeToMoveTo = 0.0;
 
 		this.blockOnChildSem = new Semaphore(0);
 		this.runForwardSem = new Semaphore(0);
@@ -132,7 +132,7 @@ public class FlowDriver implements Runnable {
 		this.eventQueue.add(newEvent);
 	}
 
-	public long getNextTimeAdvnace() throws InterruptedException {
+	public double getNextTimeAdvnace() throws InterruptedException {
 		this.runForwardSem.acquire();
 		return this.timeToMoveTo;
 	}

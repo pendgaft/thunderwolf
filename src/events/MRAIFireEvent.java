@@ -5,12 +5,12 @@ import logging.SimLogger;
 
 public class MRAIFireEvent extends SimEvent{
 	
-	public MRAIFireEvent(long time, BGPSpeaker self){
+	public MRAIFireEvent(double time, BGPSpeaker self){
 		super(time, SimEvent.MRAI_EVENT, self);
 	}
 
 	public void handleEvent(SimLogger theLogger) {
-		this.getOwner().mraiExpire(this.getEventTime());
+		this.getOwner().mraiExpire();
 		this.getOwner().radiateCleanup(2);
 	}
 	

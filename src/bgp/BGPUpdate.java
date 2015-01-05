@@ -38,7 +38,7 @@ public class BGPUpdate {
 	private boolean bgpProcessed;
 	//TODO sendRate is a terrible named, please refactor
 	private double sendRate;
-	private long estCompletion;
+	private double estCompletion;
 
 	private int availToSendSize;
 	private int completedSize;
@@ -91,7 +91,7 @@ public class BGPUpdate {
 		this.childUpdates = null;
 		this.bgpProcessed = false;
 		this.sendRate = 0.0;
-		this.estCompletion = Long.MAX_VALUE;
+		this.estCompletion = Double.MAX_VALUE;
 	}
 
 	/**
@@ -113,6 +113,7 @@ public class BGPUpdate {
 		this.childUpdates = null;
 		this.bgpProcessed = false;
 		this.sendRate = 0.0;
+		this.estCompletion = Double.MAX_VALUE;
 	}
 
 	/**
@@ -192,7 +193,7 @@ public class BGPUpdate {
 		this.availToSendSize += newStateRcvd;
 	}
 
-	public void advanceUpdate(long time) {
+	public void advanceUpdate(double time) {
 		int stateSent = (int) (time * this.sendRate);
 		stateSent = Math.min(stateSent, this.availToSendSize);
 		this.availToSendSize -= stateSent;
@@ -214,15 +215,15 @@ public class BGPUpdate {
 		}
 	}
 
-	public long getEstimatedCompletionTime() {
+	public double getEstimatedCompletionTime() {
 		return this.estCompletion;
 	}
 
 	public void updateEstCompletion() {
 		if (this.sendRate == 0.0) {
-			this.estCompletion = Long.MAX_VALUE;
+			this.estCompletion = Double.MAX_VALUE;
 		} else {
-			long myEstComp = (long) ((this.totalSize - this.completedSize) / this.sendRate);
+			double myEstComp = (double)(this.totalSize - this.completedSize) / this.sendRate;
 			if (this.isDependancyRoot()) {
 				this.estCompletion = myEstComp;
 			} else {

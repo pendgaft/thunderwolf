@@ -16,19 +16,16 @@ public class SimLogger {
 	private List<Integer> orderedASNList;
 	private HashMap<Integer, BGPSpeaker> topology;
 
-	private long nextLoggingHorizon;
-	public static final long LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 30;
+	private double nextLoggingHorizon;
+	public static final double LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 30;
 
 	private static final String LOG_DIR = "logs/";
 	private static final String MEM_STUB = "-mem.csv";
 	private static final String TABLE_STUB = "-table.csv";
 
-	public SimLogger(String fileBase, HashMap<Integer, BGPSpeaker> topo)
-			throws IOException {
-		this.memOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR
-				+ fileBase + SimLogger.MEM_STUB));
-		this.tableSizeOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR
-				+ fileBase + SimLogger.TABLE_STUB));
+	public SimLogger(String fileBase, HashMap<Integer, BGPSpeaker> topo) throws IOException {
+		this.memOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.MEM_STUB));
+		this.tableSizeOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.TABLE_STUB));
 
 		this.topology = topo;
 		this.orderedASNList = this.buildOrderedASNList(topo);
@@ -40,7 +37,7 @@ public class SimLogger {
 	 * 
 	 * @return - the simulated time we want to log from
 	 */
-	public long getNextLogTime() {
+	public double getNextLogTime() {
 		return this.nextLoggingHorizon;
 	}
 
@@ -50,7 +47,8 @@ public class SimLogger {
 	 * expected to function. This MUST be called before processLogging is
 	 * called.
 	 * 
-	 * @throws IOException - if there is an error from internal functions doing setup
+	 * @throws IOException
+	 *             - if there is an error from internal functions doing setup
 	 */
 	public void setupStatPush() throws IOException {
 		this.setupLoggingHeader(memOut);
@@ -77,20 +75,16 @@ public class SimLogger {
 		//TODO make this configurable in the future (as to what stats we're tracking)
 		for (int tASN : this.topology.keySet()) {
 			memMap.put(tASN, (double) this.topology.get(tASN).memLoad());
-			tableSize.put(tASN, (double) this.topology.get(tASN)
-					.calcTotalRouteCount());
+			tableSize.put(tASN, (double) this.topology.get(tASN).calcTotalRouteCount());
 		}
 
 		/*
 		 * Actually do the logging, these can throw IOExceptions, that should be
 		 * handled by the calling class
 		 */
-		this
-				.writeToLog(memMap, this.nextLoggingHorizon, this.memOut,
-						1000000.0);
-		this.writeToLog(tableSize, this.nextLoggingHorizon, this.tableSizeOut,
-				1000.0);
-		
+		this.writeToLog(memMap, this.nextLoggingHorizon, this.memOut, 1000000.0);
+		this.writeToLog(tableSize, this.nextLoggingHorizon, this.tableSizeOut, 1000.0);
+
 		/*
 		 * Spit some stuff to the console
 		 */
@@ -165,8 +159,8 @@ public class SimLogger {
 	 * @throws IOException
 	 *             - if anything breaks writing to the file
 	 */
-	private void writeToLog(HashMap<Integer, Double> values, long currentTime,
-			BufferedWriter outputStream, double scaleFactor) throws IOException {
+	private void writeToLog(HashMap<Integer, Double> values, double currentTime, BufferedWriter outputStream,
+			double scaleFactor) throws IOException {
 
 		/*
 		 * First, get the time recorded, convert to seconds
@@ -188,45 +182,45 @@ public class SimLogger {
 		outputStream.newLine();
 		outputStream.flush();
 	}
-	
-	private void printToConsole(){
+
+	private void printToConsole() {
 		String timeStr = "seconds";
-		long timeVal = this.nextLoggingHorizon / SimEvent.SECOND_MULTIPLIER;
-		if(timeVal > 60){
+		double timeVal = this.nextLoggingHorizon / SimEvent.SECOND_MULTIPLIER;
+		if (timeVal > 60) {
 			timeVal = timeVal / 60;
 			timeStr = "minutes";
 		}
-		if(timeVal > 60){
+		if (timeVal > 60) {
 			timeVal = timeVal / 60;
 			timeStr = "hours";
 		}
-		if(timeVal > 24){
+		if (timeVal > 24) {
 			timeVal = timeVal / 24;
 			timeStr = "days";
 		}
-		
+
 		/*
 		 * Print about of simulated time that has passed.
 		 */
 		StringBuilder strBuild = new StringBuilder();
-		strBuild.append("Sim done through: " );
-		strBuild.append(Long.toString(timeVal));
+		strBuild.append("Sim done through: ");
+		strBuild.append(Double.toString(timeVal));
 		strBuild.append(" ");
 		strBuild.append(timeStr);
 		strBuild.append("   ");
-		
+
 		List<Long> stillToGo = new LinkedList<Long>();
-		for(BGPSpeaker tRouter: this.topology.values()){
+		for (BGPSpeaker tRouter : this.topology.values()) {
 			stillToGo.add(tRouter.getWorkRemaining());
 		}
 		double avg = Stats.mean(stillToGo);
 		double med = Stats.median(stillToGo);
-		
+
 		strBuild.append("avg work to do: ");
 		strBuild.append(Double.toString(avg));
-		strBuild.append(" med work to do: " );
+		strBuild.append(" med work to do: ");
 		strBuild.append(Double.toString(med));
-		
+
 		System.out.println(strBuild.toString());
 	}
 }
