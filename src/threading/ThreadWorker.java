@@ -51,7 +51,7 @@ public class ThreadWorker implements Runnable {
 
 				this.workSource.waitForProcessEventUpdate();
 				for (BGPSpeaker tChild : this.ownedNodes) {
-					ProcessEvent evictEvent = tChild.checkIfProcessingEventNeedsUpdating();
+					ProcessEvent evictEvent = tChild.checkIfProcessingEventNeedsUpdating(this.lastTimeAdvance);
 					if (evictEvent != null) {
 						this.workSource.replaceProcessEvent(evictEvent, tChild.getNextProcessEvent());
 					}

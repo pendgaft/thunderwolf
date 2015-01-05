@@ -22,8 +22,9 @@ public class FlowDriver implements Runnable {
 	private SimLogger logMaster;
 
 	private static final int NUMBER_OF_THREADS = 2;
-	private static final double MAX_SIM_TIME = 60000.0;
-	private static final boolean DEBUG = true;
+	private static final double MAX_SIM_TIME = 600000.0;
+	private static final boolean DEBUG_TABLES = true;
+	private static final boolean DEBUG_EVENTS = false;
 
 	public FlowDriver(HashMap<Integer, BGPSpeaker> routingTopology, SimLogger logs) {
 		this.topo = routingTopology;
@@ -72,12 +73,19 @@ public class FlowDriver implements Runnable {
 
 	public void run() {
 
-		if (!this.simFinished()) {
+		while (!this.simFinished()) {
 			SimEvent nextEvent = this.eventQueue.poll();
 
+			if(FlowDriver.DEBUG_EVENTS){
+				System.out.println(nextEvent.toString());
+			}
+			
 			/*
 			 * Find out when we get to run forward to, and release the children
 			 */
+			if(nextEvent.getEventTime() < this.timeToMoveTo){
+				throw new RuntimeException("Attempted to time travel.");
+			}
 			this.timeToMoveTo = nextEvent.getEventTime();
 			this.runForwardSem.release(FlowDriver.NUMBER_OF_THREADS);
 
@@ -121,9 +129,9 @@ public class FlowDriver implements Runnable {
 		/*
 		 * We're finished with the simulation, do any cleanup
 		 */
-		if (FlowDriver.DEBUG) {
+		if (FlowDriver.DEBUG_TABLES) {
 			for (BGPSpeaker tRouter : this.topo.values()) {
-				System.out.println(tRouter.printBGPString(true));
+				System.out.println(tRouter.printBGPString(false));
 			}
 		}
 	}

@@ -15,7 +15,7 @@ public class ProcessEvent extends SimEvent {
 	}
 	
 	public SimEvent repopulate(){
-		this.getOwner().handleProcessingEventCompleted();
+		this.getOwner().handleProcessingEventCompleted(super.getEventTime());
 		return this.getOwner().getNextProcessEvent();
 	}
 }

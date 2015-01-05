@@ -18,13 +18,17 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	public static final double SECOND_MULTIPLIER = 1000.0;
 
 	public SimEvent(double eTime, int eType, BGPSpeaker owner) {
+		if (!(eType == SimEvent.LOGGING_EVENT || eType == SimEvent.ROUTER_PROCESS || eType == SimEvent.MRAI_EVENT)) {
+			throw new IllegalArgumentException("Bad event type: " + eType);
+		}
+
 		this.eventTime = eTime;
 		this.eventType = eType;
 		this.myOwner = owner;
 	}
 
 	public abstract void handleEvent(SimLogger theLogger);
-	
+
 	public abstract SimEvent repopulate();
 
 	public double getEventTime() {
@@ -55,11 +59,13 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 		strBuilder.append("Event type: ");
 
 		if (this.eventType == SimEvent.MRAI_EVENT) {
-			strBuilder.append("MRAI");
+			strBuilder.append("MRAI,");
 		} else if (this.eventType == SimEvent.ROUTER_PROCESS) {
-			strBuilder.append("Process");
+			strBuilder.append("Process,");
 		} else if (this.eventType == SimEvent.LOGGING_EVENT) {
-			strBuilder.append("Logging");
+			strBuilder.append("Logging,");
+		} else{
+			strBuilder.append(this.eventType + " ??");
 		}
 
 		strBuilder.append(" Owner: ");
@@ -68,12 +74,15 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 		} else {
 			strBuilder.append("Simulator");
 		}
+
+		strBuilder.append(" Time: ");
+		strBuilder.append(this.eventTime);
 		return strBuilder.toString();
 	}
 
 	public int hashCode() {
 		int salt = -1;
-		if(this.myOwner != null){
+		if (this.myOwner != null) {
 			salt = this.myOwner.getASN();
 		}
 		return salt + this.eventType * 100000 + (int) this.eventTime;
@@ -82,12 +91,15 @@ public abstract class SimEvent implements Comparable<SimEvent> {
 	public boolean equals(Object rhs) {
 		SimEvent rhsEvent = (SimEvent) rhs;
 		boolean ownerTest = false;
-		if(this.myOwner == null){
+		if (this.eventType != rhsEvent.eventType) {
+			return false;
+		}
+
+		if (this.myOwner == null) {
 			ownerTest = (rhsEvent.myOwner == null);
-		}else{
+		} else {
 			ownerTest = rhsEvent.getOwner().getASN() == this.getOwner().getASN();
 		}
-		return ownerTest && this.eventType == rhsEvent.eventType
-				&& this.eventTime == rhsEvent.eventTime;
+		return ownerTest && this.eventTime == rhsEvent.eventTime;
 	}
 }

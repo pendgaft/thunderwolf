@@ -201,6 +201,7 @@ public class BGPSpeaker {
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
 				for (int tDest : this.dirtyDests.get(tPeer)) {
+					System.out.println("adv " + tDest + " to " + tPeer + " from " + this.getASN());
 					this.sendUpdate(tDest, tPeer);
 				}
 
@@ -234,6 +235,7 @@ public class BGPSpeaker {
 	public boolean selfInstallPath(BGPRoute incRoute) {
 		Queue<BGPUpdate> incQueue = this.incUpdateQueues.get(this.myAS.getASN());
 		BGPUpdate selfUpdate = BGPUpdate.buildAdvertisement(incRoute);
+		this.handleAdvertisement(selfUpdate);
 		selfUpdate.fakeFinishedInternalUpdate();
 		incQueue.add(selfUpdate);
 
@@ -285,18 +287,19 @@ public class BGPSpeaker {
 		}
 	}
 
-	public ProcessEvent checkIfProcessingEventNeedsUpdating() {
+	public ProcessEvent checkIfProcessingEventNeedsUpdating(double currentTime) {
 		ProcessEvent evict = null;
+		double timeDelta = this.nextProcessEvent.getEventTime() - currentTime;
 
 		/*
 		 * Update if our current next to process has slowed down
 		 */
 		if (this.nextProcessQueue != -1) {
-			if (this.nextProcessEvent.getEventTime() < this.incUpdateQueues.get(this.nextProcessQueue).peek()
-					.getEstimatedCompletionTime()) {
+			if (timeDelta < this.incUpdateQueues.get(this.nextProcessQueue).peek().getEstimatedCompletionTime()) {
 				evict = this.nextProcessEvent;
 				this.nextProcessEvent = new ProcessEvent(this.incUpdateQueues.get(this.nextProcessQueue).peek()
-						.getEstimatedCompletionTime(), this);
+						.getEstimatedCompletionTime()
+						+ currentTime, this);
 			}
 		}
 
@@ -313,11 +316,11 @@ public class BGPSpeaker {
 			/*
 			 * If this queue is actually sooner make a new event
 			 */
-			if (this.nextProcessEvent.getEventTime() > tQueue.peek().getEstimatedCompletionTime()) {
+			if (timeDelta > tQueue.peek().getEstimatedCompletionTime()) {
 				if (evict == null) {
 					evict = this.nextProcessEvent;
 				}
-				this.nextProcessEvent = new ProcessEvent(tQueue.peek().getEstimatedCompletionTime(), this);
+				this.nextProcessEvent = new ProcessEvent(tQueue.peek().getEstimatedCompletionTime() + currentTime, this);
 				this.nextProcessQueue = tASN;
 			}
 		}
@@ -334,10 +337,10 @@ public class BGPSpeaker {
 	 * processing event to the end of the world and then uses existing machinery
 	 * to compute when the real next event is
 	 */
-	public void handleProcessingEventCompleted() {
+	public void handleProcessingEventCompleted(double currentTime) {
 		this.nextProcessEvent = new ProcessEvent(Long.MAX_VALUE, this);
 		this.nextProcessQueue = -1;
-		this.checkIfProcessingEventNeedsUpdating();
+		this.checkIfProcessingEventNeedsUpdating(currentTime);
 	}
 
 	private void prepQueues(int routerGroup) {
