@@ -65,7 +65,7 @@ public class ASTopoParser {
 		 * Build the actual routers, pass a reference to the router map itself
 		 */
 		HashMap<Integer, BGPSpeaker> routerMap = new HashMap<Integer, BGPSpeaker>();
-		HashSet<Double> mraiUnique = new HashSet<Long>();
+		HashSet<Double> mraiUnique = new HashSet<Double>();
 		Random rng = new Random();
 		for (AS tAS : this.prunedTopo.values()) {
 			double jitter;
@@ -81,7 +81,7 @@ public class ASTopoParser {
 				}
 			}
 			mraiUnique.add(mraiValue);
-			routerMap.put(tAS.getASN(), new BGPSpeaker(tAS, routerMap));
+			routerMap.put(tAS.getASN(), new BGPSpeaker(tAS, routerMap, mraiValue));
 		}
 		for(BGPSpeaker tSpeaker: routerMap.values()){
 			tSpeaker.setupSharedQueues();
