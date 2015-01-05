@@ -66,6 +66,9 @@ public class ASTopoParser {
 		for (AS tAS : this.prunedTopo.values()) {
 			routerMap.put(tAS.getASN(), new BGPSpeaker(tAS, routerMap));
 		}
+		for(BGPSpeaker tSpeaker: routerMap.values()){
+			tSpeaker.setupSharedQueues();
+		}
 
 		return routerMap;
 	}
