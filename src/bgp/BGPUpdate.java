@@ -83,7 +83,7 @@ public class BGPUpdate {
 		this.advRoute = path;
 		this.withdrawal = false;
 
-		this.totalSize = (double)path.getSize();
+		this.totalSize = (double) path.getSize();
 		this.availToSendSize = 0.0;
 		this.completedSize = 0.0;
 
@@ -105,7 +105,7 @@ public class BGPUpdate {
 		this.withrdawalSource = updateSrc;
 		this.withdrawal = true;
 
-		this.totalSize = (double)size;
+		this.totalSize = (double) size;
 		this.availToSendSize = 0.0;
 		this.completedSize = 0.0;
 
@@ -231,8 +231,10 @@ public class BGPUpdate {
 			}
 		}
 
-		for(BGPUpdate tDependant: this.childUpdates){
-			tDependant.updateEstCompletion();
+		if (this.childUpdates != null) {
+			for (BGPUpdate tDependant : this.childUpdates) {
+				tDependant.updateEstCompletion();
+			}
 		}
 	}
 
