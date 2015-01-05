@@ -684,7 +684,7 @@ public class BGPSpeaker {
 	 * 
 	 * @return - a detailed debug string from the AS object
 	 */
-	public String printDebugString() {
+	public String printASString() {
 		return this.myAS.printDebugString();
 	}
 
