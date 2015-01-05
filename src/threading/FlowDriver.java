@@ -23,6 +23,7 @@ public class FlowDriver implements Runnable {
 
 	private static final int NUMBER_OF_THREADS = 2;
 	private static final double MAX_SIM_TIME = 60000.0;
+	private static final boolean DEBUG = true;
 
 	public FlowDriver(HashMap<Integer, BGPSpeaker> routingTopology, SimLogger logs) {
 		this.topo = routingTopology;
@@ -120,6 +121,11 @@ public class FlowDriver implements Runnable {
 		/*
 		 * We're finished with the simulation, do any cleanup
 		 */
+		if (FlowDriver.DEBUG) {
+			for (BGPSpeaker tRouter : this.topo.values()) {
+				System.out.println(tRouter.printBGPString(true));
+			}
+		}
 	}
 
 	//TODO at some point this should be smarter, for now run to a fixed simulated time
