@@ -54,7 +54,7 @@ public class BGPSpeaker {
 	 * @param routerMap
 	 *            - the global ASN to AS object mapping
 	 */
-	public BGPSpeaker(AS asObj, HashMap<Integer, BGPSpeaker> routerMap) {
+	public BGPSpeaker(AS asObj, HashMap<Integer, BGPSpeaker> routerMap, double openingMRAI) {
 		this.myAS = asObj;
 		this.peers = routerMap;
 
@@ -76,7 +76,7 @@ public class BGPSpeaker {
 			this.dirtyDests.put(tASN, new HashSet<Integer>());
 		}
 		this.incUpdateQueues.put(this.getASN(), new LinkedList<BGPUpdate>());
-		this.nextMRAI = 0.0;
+		this.nextMRAI = openingMRAI;
 		this.nextProcessEvent = new ProcessEvent(Long.MAX_VALUE, this);
 		this.nextProcessQueue = -1;
 
@@ -216,11 +216,6 @@ public class BGPSpeaker {
 		 * Update the MRAI time
 		 */
 		this.nextMRAI += BGPSpeaker.MRAI_LENGTH;
-	}
-
-	//TODO move this to the constructor and delete this method for var saftey
-	public void setOpeningMRAI(double time) {
-		this.nextMRAI = time;
 	}
 
 	public MRAIFireEvent getNextMRAI() {

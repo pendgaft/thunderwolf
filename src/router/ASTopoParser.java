@@ -3,6 +3,8 @@ package router;
 import java.util.*;
 import java.io.*;
 
+import events.SimEvent;
+
 /**
  * Class containing a static method for construction of the topology. This class
  * ASSUMES that the topology files are pre-pruned, and that any AS found in the
@@ -63,7 +65,22 @@ public class ASTopoParser {
 		 * Build the actual routers, pass a reference to the router map itself
 		 */
 		HashMap<Integer, BGPSpeaker> routerMap = new HashMap<Integer, BGPSpeaker>();
+		HashSet<Double> mraiUnique = new HashSet<Long>();
+		Random rng = new Random();
 		for (AS tAS : this.prunedTopo.values()) {
+			double jitter;
+			double mraiValue = 0;
+			while (mraiValue == 0) {
+				jitter = rng.nextDouble() * (30.0 * SimEvent.SECOND_MULTIPLIER); 
+				mraiValue = 30.0 * SimEvent.SECOND_MULTIPLIER + jitter;
+				/*
+				 * Odds of a collision are stupid low, but be cautious
+				 */
+				if (mraiUnique.contains(mraiValue)) {
+					mraiValue = 0;
+				}
+			}
+			mraiUnique.add(mraiValue);
 			routerMap.put(tAS.getASN(), new BGPSpeaker(tAS, routerMap));
 		}
 		for(BGPSpeaker tSpeaker: routerMap.values()){
