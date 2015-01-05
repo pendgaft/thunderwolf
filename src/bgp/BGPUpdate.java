@@ -40,9 +40,9 @@ public class BGPUpdate {
 	private double sendRate;
 	private double estCompletion;
 
-	private int availToSendSize;
-	private int completedSize;
-	private int totalSize;
+	private double availToSendSize;
+	private double completedSize;
+	private double totalSize;
 
 	private BGPUpdate parentUpdate;
 	private List<BGPUpdate> childUpdates;
@@ -83,9 +83,9 @@ public class BGPUpdate {
 		this.advRoute = path;
 		this.withdrawal = false;
 
-		this.totalSize = path.getSize();
-		this.availToSendSize = 0;
-		this.completedSize = 0;
+		this.totalSize = (double)path.getSize();
+		this.availToSendSize = 0.0;
+		this.completedSize = 0.0;
 
 		this.parentUpdate = null;
 		this.childUpdates = null;
@@ -105,9 +105,9 @@ public class BGPUpdate {
 		this.withrdawalSource = updateSrc;
 		this.withdrawal = true;
 
-		this.totalSize = size;
-		this.availToSendSize = 0;
-		this.completedSize = 0;
+		this.totalSize = (double)size;
+		this.availToSendSize = 0.0;
+		this.completedSize = 0.0;
 
 		this.parentUpdate = null;
 		this.childUpdates = null;
@@ -185,8 +185,8 @@ public class BGPUpdate {
 		this.sendRate = newSendRate;
 	}
 
-	private void pushAvailState(int newStateRcvd) {
-		if (newStateRcvd < 0) {
+	private void pushAvailState(double newStateRcvd) {
+		if (newStateRcvd < 0.0) {
 			throw new RuntimeException("Can't add a negetive amount of state.");
 		}
 
@@ -194,7 +194,7 @@ public class BGPUpdate {
 	}
 
 	public void advanceUpdate(double time) {
-		int stateSent = (int) (time * this.sendRate);
+		double stateSent = time * this.sendRate;
 		stateSent = Math.min(stateSent, this.availToSendSize);
 		this.availToSendSize -= stateSent;
 		this.completedSize += stateSent;
@@ -203,7 +203,7 @@ public class BGPUpdate {
 		 * If we've not advanced any state we can stop any recursive calls right
 		 * here...
 		 */
-		if (stateSent == 0) {
+		if (stateSent == 0.0) {
 			return;
 		}
 
@@ -223,7 +223,7 @@ public class BGPUpdate {
 		if (this.sendRate == 0.0) {
 			this.estCompletion = Double.MAX_VALUE;
 		} else {
-			double myEstComp = (double)(this.totalSize - this.completedSize) / this.sendRate;
+			double myEstComp = (this.totalSize - this.completedSize) / this.sendRate;
 			if (this.isDependancyRoot()) {
 				this.estCompletion = myEstComp;
 			} else {
