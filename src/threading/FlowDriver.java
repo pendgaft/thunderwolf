@@ -18,10 +18,11 @@ public class FlowDriver implements Runnable {
 	private Semaphore runForwardSem;
 	private Semaphore eventUpdateSem;
 	private Semaphore processUpdateSem;
-	
+
 	private SimLogger logMaster;
 
 	private static final int NUMBER_OF_THREADS = 2;
+	private static final long MAX_SIM_TIME = 60000;
 
 	public FlowDriver(HashMap<Integer, BGPSpeaker> routingTopology, SimLogger logs) {
 		this.topo = routingTopology;
@@ -44,7 +45,7 @@ public class FlowDriver implements Runnable {
 	 */
 	private void seedInitialEvents() {
 		this.eventQueue.put(new LoggingEvent(SimLogger.LOG_EPOCH));
-		for(BGPSpeaker tRouter: this.topo.values()){
+		for (BGPSpeaker tRouter : this.topo.values()) {
 			this.eventQueue.put(tRouter.getNextMRAI());
 			this.eventQueue.put(tRouter.getNextProcessEvent());
 		}
@@ -78,7 +79,7 @@ public class FlowDriver implements Runnable {
 			 */
 			this.timeToMoveTo = nextEvent.getEventTime();
 			this.runForwardSem.release(FlowDriver.NUMBER_OF_THREADS);
-			
+
 			/*
 			 * Wait until the children are done
 			 */
@@ -88,13 +89,14 @@ public class FlowDriver implements Runnable {
 				e.printStackTrace();
 				System.exit(-2);
 			}
-			
+
 			/*
-			 * Deal with any special event activity, and then repopoulate the event
+			 * Deal with any special event activity, and then repopoulate the
+			 * event
 			 */
 			nextEvent.handleEvent(this.logMaster);
 			this.eventQueue.put(nextEvent.repopulate());
-			
+
 			/*
 			 * Again, release the children, wait till they are done..
 			 */
@@ -105,7 +107,7 @@ public class FlowDriver implements Runnable {
 				e.printStackTrace();
 				System.exit(-2);
 			}
-			
+
 			this.processUpdateSem.release(FlowDriver.NUMBER_OF_THREADS);
 			try {
 				this.blockOnChildSem.acquire(FlowDriver.NUMBER_OF_THREADS);
@@ -120,12 +122,12 @@ public class FlowDriver implements Runnable {
 		 */
 	}
 
+	//TODO at some point this should be smarter, for now run to a fixed simulated time
 	private boolean simFinished() {
-		//TODO implement
-		return false;
+		return this.timeToMoveTo >= FlowDriver.MAX_SIM_TIME;
 	}
-	
-	public void replaceProcessEvent(ProcessEvent oldEvent, ProcessEvent newEvent){
+
+	public void replaceProcessEvent(ProcessEvent oldEvent, ProcessEvent newEvent) {
 		this.eventQueue.remove(oldEvent);
 		this.eventQueue.add(newEvent);
 	}
@@ -138,8 +140,8 @@ public class FlowDriver implements Runnable {
 	public void waitForEventAdjust() throws InterruptedException {
 		this.eventUpdateSem.acquire();
 	}
-	
-	public void waitForProcessEventUpdate() throws InterruptedException{
+
+	public void waitForProcessEventUpdate() throws InterruptedException {
 		this.processUpdateSem.acquire();
 	}
 
