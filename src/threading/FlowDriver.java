@@ -26,6 +26,12 @@ public class FlowDriver implements Runnable {
 	private static final boolean DEBUG_TABLES = true;
 	private static final boolean DEBUG_EVENTS = false;
 
+	//XXX consider saner way to pass this in
+	public static int SIM_END_MODE = FlowDriver.TIMED_SIM_END;
+
+	public static final int TIMED_SIM_END = 1;
+	public static final int WORK_SIM_END = 2;
+
 	public FlowDriver(HashMap<Integer, BGPSpeaker> routingTopology, SimLogger logs) {
 		this.topo = routingTopology;
 		this.eventQueue = new PriorityBlockingQueue<SimEvent>();
@@ -73,25 +79,26 @@ public class FlowDriver implements Runnable {
 
 	public void run() {
 
+		long currentWallTime = System.currentTimeMillis();
 		while (!this.simFinished()) {
 			SimEvent nextEvent = this.eventQueue.poll();
 
-			if(FlowDriver.DEBUG_EVENTS){
+			if (FlowDriver.DEBUG_EVENTS) {
 				System.out.println(nextEvent.toString());
 				int headRoot = 0;
 				int root = 0;
-				for(BGPSpeaker tRouter: this.topo.values()){
+				for (BGPSpeaker tRouter : this.topo.values()) {
 					tRouter.printHeadOfQueues();
 					headRoot += tRouter.countRootAtHead();
 					root += tRouter.countDepRoots();
 				}
 				System.out.println("Roots: " + root + " head roots: " + headRoot);
 			}
-			
+
 			/*
 			 * Find out when we get to run forward to, and release the children
 			 */
-			if(nextEvent.getEventTime() < this.timeToMoveTo){
+			if (nextEvent.getEventTime() < this.timeToMoveTo) {
 				throw new RuntimeException("Attempted to time travel.");
 			}
 			this.timeToMoveTo = nextEvent.getEventTime();
@@ -143,11 +150,32 @@ public class FlowDriver implements Runnable {
 				System.out.println("active count for " + tRouter.getASN() + " is " + tRouter.countActiveQueues(-1));
 			}
 		}
+		System.out.println("Simulation ran to: " + this.timeToMoveTo + " simulated wall time.");
+		System.out.println("This took: " + (double) (System.currentTimeMillis() - currentWallTime) / 60000.0
+				+ " minutes.");
 	}
 
-	//TODO at some point this should be smarter, for now run to a fixed simulated time
 	private boolean simFinished() {
+		if (FlowDriver.SIM_END_MODE == FlowDriver.TIMED_SIM_END) {
+			return this.timeSimFinished();
+		} else if (FlowDriver.SIM_END_MODE == FlowDriver.WORK_SIM_END) {
+			return this.workSimFinished();
+		} else {
+			throw new RuntimeException("Bad simulation end mode given: " + FlowDriver.SIM_END_MODE);
+		}
+	}
+
+	private boolean timeSimFinished() {
 		return this.timeToMoveTo >= FlowDriver.MAX_SIM_TIME;
+	}
+
+	private boolean workSimFinished() {
+		for (BGPSpeaker tRouter : this.topo.values()) {
+			if (!tRouter.isDone()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public void replaceProcessEvent(ProcessEvent oldEvent, ProcessEvent newEvent) {
