@@ -15,6 +15,8 @@ import router.BGPSpeaker;
  */
 public class EvenSeed extends NetworkSeeder {
 
+    private static final int NET_SIZE = 100;
+
 	public EvenSeed(HashMap<Integer, BGPSpeaker> activeTopo) {
 		super(activeTopo);
 	}
@@ -22,7 +24,7 @@ public class EvenSeed extends NetworkSeeder {
 	@Override
 	public void initialSeed() {
 		for (BGPSpeaker tAS : this.topoMap.values()) {
-			tAS.selfInstallPath(new BGPRoute(tAS.getASN(), 1));
+			tAS.selfInstallPath(new BGPRoute(tAS.getASN(), EvenSeed.NET_SIZE));
 		}
 	}
 
