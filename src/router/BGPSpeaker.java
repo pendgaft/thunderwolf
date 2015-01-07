@@ -201,7 +201,6 @@ public class BGPSpeaker {
 		synchronized (this.dirtyDests) {
 			for (int tPeer : this.dirtyDests.keySet()) {
 				for (int tDest : this.dirtyDests.get(tPeer)) {
-					System.out.println("adv " + tDest + " to " + tPeer + " from " + this.getASN());
 					this.sendUpdate(tDest, tPeer);
 				}
 
