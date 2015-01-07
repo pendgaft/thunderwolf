@@ -247,9 +247,14 @@ public class BGPSpeaker {
 	}
 
 	public void radiateCleanup(int depth) {
-		Set<Integer> targets = this.buildDepthSet(depth);
-		for (int tASN : targets) {
-			this.peers.get(tASN).handleIncomingQueueCleanup();
+		//		Set<Integer> targets = this.buildDepthSet(depth);
+		//		for (int tASN : targets) {
+		//			this.peers.get(tASN).handleIncomingQueueCleanup();
+		//		}
+
+		//XXX we might be able to get some performance savings coming back to this...
+		for (BGPSpeaker tRouter : this.peers.values()) {
+			tRouter.handleIncomingQueueCleanup();
 		}
 	}
 
@@ -295,8 +300,17 @@ public class BGPSpeaker {
 		 * Update if our current next to process has slowed down
 		 */
 		if (this.nextProcessQueue != -1) {
-			if (timeDelta < this.incUpdateQueues.get(this.nextProcessQueue).peek().getEstimatedCompletionTime()) {
+			/*
+			 * There is a non-zero chance we end up here with the
+			 * "soonest event" not existing (odd edge case with theshholding I
+			 * _think_), handle it instead of eatting a null pointer..
+			 */
+			if (this.incUpdateQueues.get(this.nextProcessQueue).isEmpty()) {
 				evict = this.nextProcessEvent;
+				timeDelta = Double.MAX_VALUE;
+			} else if (timeDelta < this.incUpdateQueues.get(this.nextProcessQueue).peek().getEstimatedCompletionTime()) {
+				evict = this.nextProcessEvent;
+				//FIXME null pointer here...
 				this.nextProcessEvent = new ProcessEvent(this.incUpdateQueues.get(this.nextProcessQueue).peek()
 						.getEstimatedCompletionTime()
 						+ currentTime, this);
