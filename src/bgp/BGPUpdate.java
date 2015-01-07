@@ -84,7 +84,7 @@ public class BGPUpdate {
 		this.withdrawal = false;
 
 		this.totalSize = (double) path.getSize();
-		this.availToSendSize = 0.0;
+		this.availToSendSize = this.totalSize;
 		this.completedSize = 0.0;
 
 		this.parentUpdate = null;
@@ -106,7 +106,7 @@ public class BGPUpdate {
 		this.withdrawal = true;
 
 		this.totalSize = (double) size;
-		this.availToSendSize = 0.0;
+		this.availToSendSize = this.totalSize;
 		this.completedSize = 0.0;
 
 		this.parentUpdate = null;
@@ -262,6 +262,7 @@ public class BGPUpdate {
 
 		if (parent != null) {
 			parent.addChild(this);
+			this.availToSendSize = 0.0;
 		}
 	}
 
