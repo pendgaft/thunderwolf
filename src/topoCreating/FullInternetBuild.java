@@ -48,7 +48,7 @@ public class FullInternetBuild {
 				 * THE SIGN FLIP IS CORRECT. getRel returns their relationship
 				 * to us, we want our relationship to them!!!!
 				 */
-				outFile.write("" + tAS.getASN() + "|" + tNeighbor + "|" + (tAS.getRel(tNeighbor) * -1) + "\n");
+				outFile.write("" + tAS.getASN() + "|" + tNeighbor + "|" + tAS.getMyRelationshipTo(tNeighbor) + "\n");
 				count++;
 			}
 		}
