@@ -21,8 +21,8 @@ public class FlowDriver implements Runnable {
 
 	private SimLogger logMaster;
 
-	private static final int NUMBER_OF_THREADS = 2;
-	private static final double MAX_SIM_TIME = 600000.0;
+	private static final int NUMBER_OF_THREADS = 1;
+	private static final double MAX_SIM_TIME = 120000.0;
 	private static final boolean DEBUG_TABLES = true;
 	private static final boolean DEBUG_EVENTS = false;
 
@@ -78,6 +78,14 @@ public class FlowDriver implements Runnable {
 
 			if(FlowDriver.DEBUG_EVENTS){
 				System.out.println(nextEvent.toString());
+				int headRoot = 0;
+				int root = 0;
+				for(BGPSpeaker tRouter: this.topo.values()){
+					tRouter.printHeadOfQueues();
+					headRoot += tRouter.countRootAtHead();
+					root += tRouter.countDepRoots();
+				}
+				System.out.println("Roots: " + root + " head roots: " + headRoot);
 			}
 			
 			/*
@@ -132,6 +140,7 @@ public class FlowDriver implements Runnable {
 		if (FlowDriver.DEBUG_TABLES) {
 			for (BGPSpeaker tRouter : this.topo.values()) {
 				System.out.println(tRouter.printBGPString(false));
+				System.out.println("active count for " + tRouter.getASN() + " is " + tRouter.countActiveQueues(-1));
 			}
 		}
 	}
