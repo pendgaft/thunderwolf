@@ -47,6 +47,10 @@ public class BGPUpdate {
 	private BGPUpdate parentUpdate;
 	private List<BGPUpdate> childUpdates;
 
+	//TODO consequences of using thresholding should be examined
+	//TODO best value?
+	private static final double COMPLETE_THRESHOLD = 10e-9;
+
 	/**
 	 * Static method to create an advertisement update, used when a viable path
 	 * still exists
@@ -200,13 +204,8 @@ public class BGPUpdate {
 		this.completedSize += stateSent;
 
 		/*
-		 * If we've not advanced any state we can stop any recursive calls right
-		 * here...
+		 * Recursively push all of our children...
 		 */
-		if (stateSent == 0.0) {
-			return;
-		}
-
 		if (this.childUpdates != null) {
 			for (BGPUpdate tChild : this.childUpdates) {
 				tChild.pushAvailState(stateSent);
@@ -243,11 +242,28 @@ public class BGPUpdate {
 	}
 
 	public boolean finished() {
+
 		/*
 		 * Non-zero chance there is an odd edge condition where we could
-		 * overrun, make sure we handle that..
+		 * overrun, make sure we handle that, in addition we can end up with an
+		 * infitie loop when the estimated time to complete is so small, that
+		 * the actual advance that we do rounds to zero, handle this with a
+		 * threshold for completion, be sure to update avail state as well.
 		 */
-		return this.completedSize >= this.totalSize;
+		if (this.completedSize >= this.totalSize) {
+			return true;
+		} else if (this.completedSize + BGPUpdate.COMPLETE_THRESHOLD >= this.totalSize) {
+			if (this.childUpdates != null) {
+				double delta = this.totalSize - this.completedSize;
+				for (BGPUpdate tChild : this.childUpdates) {
+					tChild.pushAvailState(delta);
+				}
+			}
+			this.completedSize = this.totalSize;
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	/*
@@ -258,11 +274,27 @@ public class BGPUpdate {
 			parent = null;
 		}
 
+		BGPUpdate oldParent = this.parentUpdate;
 		this.parentUpdate = parent;
 
 		if (parent != null) {
 			parent.addChild(this);
-			this.availToSendSize = 0.0;
+			this.availToSendSize = parent.completedSize;
+		}
+
+		if (oldParent != null) {
+			if (this.parentUpdate != null) {
+				System.out.println("what");
+				System.exit(-1);
+			}
+			if (this.parentUpdate == null
+					&& this.availToSendSize + BGPUpdate.COMPLETE_THRESHOLD < this.totalSize - this.completedSize) {
+				System.out.println("DERP\navil " + this.availToSendSize + " tot " + this.totalSize + " comp "
+						+ this.completedSize);
+				System.out.println("par avail " + oldParent.availToSendSize + " tot " + oldParent.totalSize + " comp "
+						+ oldParent.completedSize);
+				System.exit(-1);
+			}
 		}
 	}
 
