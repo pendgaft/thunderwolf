@@ -328,6 +328,44 @@ public class BGPSpeaker {
 		return evict;
 	}
 
+	//TODO these three functions can be killed at the end of testing
+	public void printHeadOfQueues() {
+		String logStr = "I am " + this.getASN();
+		for (int tPeer : this.incUpdateQueues.keySet()) {
+			if (!this.incUpdateQueues.get(tPeer).isEmpty()) {
+				logStr += " " + tPeer + "," + this.incUpdateQueues.get(tPeer).peek().getEstimatedCompletionTime();
+			}
+		}
+		System.out.println(logStr);
+	}
+
+	public int countDepRoots() {
+		int number = 0;
+		for (LinkedList<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			for (BGPUpdate tUpdate : tQueue) {
+				if (tUpdate.isDependancyRoot()) {
+					number++;
+				}
+			}
+		}
+
+		return number;
+
+	}
+
+	public int countRootAtHead() {
+		int number = 0;
+		for (Queue<BGPUpdate> tQueue : this.incUpdateQueues.values()) {
+			if (tQueue.isEmpty()) {
+				continue;
+			}
+			if (tQueue.peek().isDependancyRoot()) {
+				number++;
+			}
+		}
+		return number;
+	}
+
 	public ProcessEvent getNextProcessEvent() {
 		return this.nextProcessEvent;
 	}
@@ -382,7 +420,7 @@ public class BGPSpeaker {
 					dest = headOfQueue.getAdvertisedRoute().getDest();
 				}
 
-				if (this.locRibDependents.get(dest).equals(headOfQueue)) {
+				if (this.locRibDependents.get(dest) != null && this.locRibDependents.get(dest).equals(headOfQueue)) {
 					this.locRibDependents.remove(dest);
 				}
 
@@ -431,7 +469,7 @@ public class BGPSpeaker {
 		return 0.5;
 	}
 
-	private int countActiveQueues(int routerGroup) {
+	public int countActiveQueues(int routerGroup) {
 		int active = 0;
 		Set<Integer> peers = null;
 		if (routerGroup == -1) {
@@ -527,16 +565,16 @@ public class BGPSpeaker {
 	 */
 	private BGPRoute pathSelection(List<BGPRoute> possList) {
 		BGPRoute currentBest = null;
-		int currentRel = -4;
+		int currentRel = Integer.MAX_VALUE;
 		for (BGPRoute tPath : possList) {
 			if (currentBest == null) {
 				currentBest = tPath;
-				currentRel = this.myAS.getRel(currentBest.getNextHop(this.getASN()));
+				currentRel = this.myAS.getMyRelationshipTo(currentBest.getNextHop(this.getASN()));
 				continue;
 			}
 
-			int newRel = this.myAS.getRel(tPath.getNextHop(this.getASN()));
-			if (newRel > currentRel) {
+			int newRel = this.myAS.getMyRelationshipTo(tPath.getNextHop(this.getASN()));
+			if (newRel < currentRel) {
 				currentBest = tPath;
 				currentRel = newRel;
 				continue;
@@ -576,7 +614,7 @@ public class BGPSpeaker {
 			int nextHop = this.locRib.get(dest).getNextHop(this.getASN());
 
 			if (this.myAS.getCustomers().contains(peer) || dest == this.getASN()
-					|| (this.myAS.getRel(nextHop) == AS.CUSTOMER_CODE)) {
+					|| this.myAS.getCustomers().contains(nextHop)) {
 				BGPUpdate outUpdate = BGPUpdate.buildAdvertisement(pathToAdv);
 				outUpdate.setParent(this.locRibDependents.get(dest));
 				this.outgoingUpdateQueues.get(peer).add(outUpdate);
