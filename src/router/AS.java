@@ -164,16 +164,16 @@ public class AS {
 	 * @return - relationship code that matches what the other AS is in relation
 	 *         to this AS
 	 */
-	public int getRel(int asn) {
+	public int getMyRelationshipTo(int asn) {
 
 		if (this.providers.contains(asn)) {
-			return AS.PROIVDER_CODE;
+			return AS.CUSTOMER_CODE;
 		}
 		if (this.peers.contains(asn)) {
 			return AS.PEER_CODE;
 		}
 		if (this.customers.contains(asn)) {
-			return AS.CUSTOMER_CODE;
+			return AS.PROIVDER_CODE;
 		}
 
 		if (asn == this.asn) {
