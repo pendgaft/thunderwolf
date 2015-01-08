@@ -26,8 +26,10 @@ public class FlowDriver implements Runnable {
 	private static final boolean DEBUG_TABLES = true;
 	private static final boolean DEBUG_EVENTS = false;
 
+	private static final long REPORTING_WINDOW = 600000;
+
 	//XXX consider saner way to pass this in
-	public static int SIM_END_MODE = FlowDriver.TIMED_SIM_END;
+	public static int SIM_END_MODE = FlowDriver.WORK_SIM_END;
 
 	public static final int TIMED_SIM_END = 1;
 	public static final int WORK_SIM_END = 2;
@@ -79,8 +81,15 @@ public class FlowDriver implements Runnable {
 
 	public void run() {
 
-		long currentWallTime = System.currentTimeMillis();
+		long simStartTime = System.currentTimeMillis();
+		long lastReport = System.currentTimeMillis();
 		while (!this.simFinished()) {
+			long currentTime = System.currentTimeMillis();
+			if (currentTime - lastReport >= FlowDriver.REPORTING_WINDOW) {
+				lastReport = currentTime;
+				this.logMaster.printToConsole(lastReport);
+			}
+
 			SimEvent nextEvent = this.eventQueue.poll();
 
 			if (FlowDriver.DEBUG_EVENTS) {
@@ -151,8 +160,8 @@ public class FlowDriver implements Runnable {
 			}
 		}
 		System.out.println("Simulation ran to: " + this.timeToMoveTo + " simulated wall time.");
-		System.out.println("This took: " + (double) (System.currentTimeMillis() - currentWallTime) / 60000.0
-				+ " minutes.");
+		System.out
+				.println("This took: " + (double) (System.currentTimeMillis() - simStartTime) / 60000.0 + " minutes.");
 	}
 
 	private boolean simFinished() {
