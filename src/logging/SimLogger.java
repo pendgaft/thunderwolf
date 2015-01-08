@@ -183,31 +183,37 @@ public class SimLogger {
 		outputStream.flush();
 	}
 
-	private void printToConsole() {
+	private String timeFormatter(double timeVal) {
 		String timeStr = "seconds";
-		double timeVal = this.nextLoggingHorizon / SimEvent.SECOND_MULTIPLIER;
-		if (timeVal > 60) {
-			timeVal = timeVal / 60;
+		if (timeVal > 60.0) {
+			timeVal = timeVal / 60.0;
 			timeStr = "minutes";
 		}
-		if (timeVal > 60) {
-			timeVal = timeVal / 60;
+		if (timeVal > 60.0) {
+			timeVal = timeVal / 60.0;
 			timeStr = "hours";
 		}
-		if (timeVal > 24) {
-			timeVal = timeVal / 24;
+		if (timeVal > 24.0) {
+			timeVal = timeVal / 24.0;
 			timeStr = "days";
 		}
+		return timeVal + " " + timeStr;
+	}
 
+	public void printToConsole(long wallTimeRun) {
+		String simTimeStr = this.timeFormatter(this.nextLoggingHorizon / SimEvent.SECOND_MULTIPLIER);
+		String wallTimeStr = this.timeFormatter((double)wallTimeRun / 1000.0);
+		
 		/*
 		 * Print about of simulated time that has passed.
 		 */
 		StringBuilder strBuild = new StringBuilder();
+		strBuild.append("Wall time: ");
+		strBuild.append(wallTimeStr);
+		strBuild.append("\n");
 		strBuild.append("Sim done through: ");
-		strBuild.append(Double.toString(timeVal));
-		strBuild.append(" ");
-		strBuild.append(timeStr);
-		strBuild.append("   ");
+		strBuild.append(simTimeStr);
+		strBuild.append("\n");
 
 		List<Long> stillToGo = new LinkedList<Long>();
 		for (BGPSpeaker tRouter : this.topology.values()) {
