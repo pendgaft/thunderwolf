@@ -26,7 +26,7 @@ public class FlowDriver implements Runnable {
 
 	private static int NUMBER_OF_THREADS = 1;
 	private static final double MAX_SIM_TIME = 120000.0;
-	private static final boolean DEBUG_TABLES = true;
+	private static final boolean DEBUG_TABLES = false;
 	private static final boolean DEBUG_EVENTS = false;
 	private static final boolean MULTI_THREADING = true;
 
@@ -143,6 +143,8 @@ public class FlowDriver implements Runnable {
 			 */
 			nextEvent.handleEvent(this.logMaster);
 			this.eventQueue.put(nextEvent.repopulate());
+			
+			this.eventUpdateSem.release(FlowDriver.NUMBER_OF_THREADS);
 			this.blockOnChildren();
 
 			this.processUpdateSem.release(FlowDriver.NUMBER_OF_THREADS);
