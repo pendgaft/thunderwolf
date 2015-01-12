@@ -108,7 +108,7 @@ public class FlowDriver implements Runnable {
 			if (currentTime - lastReport >= FlowDriver.REPORTING_WINDOW) {
 				long timeRan = currentTime - lastReport;
 				lastReport = currentTime;
-				this.logMaster.printToConsole(timeRan);
+				this.logMaster.printToConsole(timeRan, this.timeToMoveTo);
 			}
 
 			SimEvent nextEvent = this.eventQueue.poll();

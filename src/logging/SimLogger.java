@@ -184,28 +184,25 @@ public class SimLogger {
 	}
 
 	private String timeFormatter(double timeVal) {
-		double orig = timeVal;
 		String timeStr = "seconds";
-		if (timeVal > 60.0) {
+		if (timeVal >= 60.0) {
 			timeVal = timeVal / 60.0;
 			timeStr = "minutes";
 		}
-		if (timeVal > 60.0) {
+		if (timeVal >= 60.0) {
 			timeVal = timeVal / 60.0;
 			timeStr = "hours";
 		}
-		if (timeVal > 24.0) {
+		if (timeVal >= 24.0) {
 			timeVal = timeVal / 24.0;
 			timeStr = "days";
 		}
-		System.out.println("formating " + orig);
-		System.out.println(timeVal + " " + timeStr);
 		
 		return timeVal + " " + timeStr;
 	}
 
-	public void printToConsole(long wallTimeRun) {
-		String simTimeStr = this.timeFormatter(this.nextLoggingHorizon / 1000.0);
+	public void printToConsole(long wallTimeRun, double simTime) {
+		String simTimeStr = this.timeFormatter(simTime / 1000.0);
 		String wallTimeStr = this.timeFormatter((double)wallTimeRun / 1000.0);
 		
 		/*
