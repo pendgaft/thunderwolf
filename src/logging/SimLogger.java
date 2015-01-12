@@ -205,7 +205,7 @@ public class SimLogger {
 	}
 
 	public void printToConsole(long wallTimeRun) {
-		String simTimeStr = this.timeFormatter(this.nextLoggingHorizon / SimEvent.SECOND_MULTIPLIER);
+		String simTimeStr = this.timeFormatter(this.nextLoggingHorizon / 1000.0);
 		String wallTimeStr = this.timeFormatter((double)wallTimeRun / 1000.0);
 		
 		/*
