@@ -188,23 +188,23 @@ public class SimLogger {
 		if (timeVal >= 60.0) {
 			timeVal = timeVal / 60.0;
 			timeStr = "minutes";
+			if (timeVal >= 60.0) {
+				timeVal = timeVal / 60.0;
+				timeStr = "hours";
+				if (timeVal >= 24.0) {
+					timeVal = timeVal / 24.0;
+					timeStr = "days";
+				}
+			}
 		}
-		if (timeVal >= 60.0) {
-			timeVal = timeVal / 60.0;
-			timeStr = "hours";
-		}
-		if (timeVal >= 24.0) {
-			timeVal = timeVal / 24.0;
-			timeStr = "days";
-		}
-		
+
 		return timeVal + " " + timeStr;
 	}
 
 	public void printToConsole(long wallTimeRun, double simTime) {
 		String simTimeStr = this.timeFormatter(simTime / 1000.0);
-		String wallTimeStr = this.timeFormatter((double)wallTimeRun / 1000.0);
-		
+		String wallTimeStr = this.timeFormatter((double) wallTimeRun / 1000.0);
+
 		/*
 		 * Print about of simulated time that has passed.
 		 */
