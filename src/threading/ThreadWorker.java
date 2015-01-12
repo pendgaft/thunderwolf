@@ -47,6 +47,7 @@ public class ThreadWorker implements Runnable {
 				for(BGPSpeaker tChild: this.ownedNodes){
 					tChild.handleIncomingQueueCleanup();
 				}
+				this.workSource.reportWorkDone();
 
 				this.workSource.waitForEventAdjust();
 				for (BGPSpeaker tChild : this.ownedNodes) {
