@@ -49,7 +49,11 @@ public class BGPUpdate {
 
 	//TODO consequences of using thresholding should be examined
 	//TODO best value?
-	private static final double COMPLETE_THRESHOLD = 10e-9;
+	/**
+	 * Currently this says if you were to complete in the next micro-second just
+	 * let it complete now
+	 */
+	public static final double COMPLETE_THRESHOLD = 10e-3;
 
 	/**
 	 * Static method to create an advertisement update, used when a viable path

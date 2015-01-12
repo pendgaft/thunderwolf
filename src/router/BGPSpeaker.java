@@ -279,12 +279,13 @@ public class BGPSpeaker {
 			if (this.incUpdateQueues.get(this.nextProcessQueue).isEmpty()) {
 				evict = this.nextProcessEvent;
 				timeDelta = Double.MAX_VALUE;
-			} else if (timeDelta < this.incUpdateQueues.get(this.nextProcessQueue).peek().getEstimatedCompletionTime()) {
-				evict = this.nextProcessEvent;
-				//FIXME null pointer here...
-				this.nextProcessEvent = new ProcessEvent(this.incUpdateQueues.get(this.nextProcessQueue).peek()
-						.getEstimatedCompletionTime()
-						+ currentTime, this);
+			} else {
+				double etc = this.incUpdateQueues.get(this.nextProcessQueue).peek().getEstimatedCompletionTime();
+				if (timeDelta < etc && Math.abs(timeDelta - etc) > BGPUpdate.COMPLETE_THRESHOLD) {
+					evict = this.nextProcessEvent;
+					this.nextProcessEvent = new ProcessEvent(etc + currentTime, this);
+					timeDelta = etc;
+				}
 			}
 		}
 
@@ -301,12 +302,21 @@ public class BGPSpeaker {
 			/*
 			 * If this queue is actually sooner make a new event
 			 */
-			if (timeDelta > tQueue.peek().getEstimatedCompletionTime()) {
+			double etc = tQueue.peek().getEstimatedCompletionTime();
+			if (timeDelta > etc) {
+				/*
+				 * If the difference is small, less than the complete threshold,
+				 * don't bother tweaking, we don't care about nanoseconds
+				 */
+				if (Math.abs(timeDelta - etc) < BGPUpdate.COMPLETE_THRESHOLD) {
+					continue;
+				}
 				if (evict == null) {
 					evict = this.nextProcessEvent;
 				}
-				this.nextProcessEvent = new ProcessEvent(tQueue.peek().getEstimatedCompletionTime() + currentTime, this);
+				this.nextProcessEvent = new ProcessEvent(etc + currentTime, this);
 				this.nextProcessQueue = tASN;
+				timeDelta = etc;
 			}
 		}
 
