@@ -16,6 +16,7 @@ public class FlowDriver implements Runnable {
 
 	private Semaphore blockOnChildSem;
 	private Semaphore runForwardSem;
+	private Semaphore scanQueueSem;
 	private Semaphore eventUpdateSem;
 	private Semaphore processUpdateSem;
 
@@ -41,6 +42,7 @@ public class FlowDriver implements Runnable {
 
 		this.blockOnChildSem = new Semaphore(0);
 		this.runForwardSem = new Semaphore(0);
+		this.scanQueueSem = new Semaphore(0);
 		this.eventUpdateSem = new Semaphore(0);
 		this.processUpdateSem = new Semaphore(0);
 		this.logMaster = logs;
@@ -82,6 +84,7 @@ public class FlowDriver implements Runnable {
 	public void run() {
 
 		long simStartTime = System.currentTimeMillis();
+		//FIXME deal with this mis-reporting run time
 		long lastReport = System.currentTimeMillis();
 		while (!this.simFinished()) {
 			long currentTime = System.currentTimeMillis();
@@ -195,6 +198,10 @@ public class FlowDriver implements Runnable {
 	public double getNextTimeAdvnace() throws InterruptedException {
 		this.runForwardSem.acquire();
 		return this.timeToMoveTo;
+	}
+
+	public void waitForScanQueues() throws InterruptedException {
+		this.scanQueueSem.acquire();
 	}
 
 	public void waitForEventAdjust() throws InterruptedException {

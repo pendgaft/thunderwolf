@@ -42,6 +42,11 @@ public class ThreadWorker implements Runnable {
 				 */
 				this.lastTimeAdvance = nextTimePoint;
 				this.workSource.reportWorkDone();
+				
+				this.workSource.waitForScanQueues();
+				for(BGPSpeaker tChild: this.ownedNodes){
+					tChild.handleIncomingQueueCleanup();
+				}
 
 				this.workSource.waitForEventAdjust();
 				for (BGPSpeaker tChild : this.ownedNodes) {

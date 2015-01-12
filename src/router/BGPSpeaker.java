@@ -245,35 +245,7 @@ public class BGPSpeaker {
 		this.runQueuesAhead(endTime - startTime, -1);
 	}
 
-	public void radiateCleanup(int depth) {
-		//		Set<Integer> targets = this.buildDepthSet(depth);
-		//		for (int tASN : targets) {
-		//			this.peers.get(tASN).handleIncomingQueueCleanup();
-		//		}
-
-		//XXX we might be able to get some performance savings coming back to this...
-		for (BGPSpeaker tRouter : this.peers.values()) {
-			tRouter.handleIncomingQueueCleanup();
-		}
-	}
-
-	private Set<Integer> buildDepthSet(int depth) {
-		HashSet<Integer> returnSet = new HashSet<Integer>();
-		HashSet<Integer> addSet = new HashSet<Integer>();
-		returnSet.add(this.getASN());
-
-		for (int counter = 0; counter < depth; counter++) {
-			addSet.clear();
-			for (int tASN : returnSet) {
-				addSet.addAll(this.peers.get(tASN).getASObject().getNeighbors());
-			}
-			returnSet.addAll(addSet);
-		}
-
-		return returnSet;
-	}
-
-	private void handleIncomingQueueCleanup() {
+	public void handleIncomingQueueCleanup() {
 		//TODO at some point we should actually re-visit router groups, now isn't the time though
 		this.prepQueues(-1);
 		this.setQueueSpeeds(-1);

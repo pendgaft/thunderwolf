@@ -11,7 +11,7 @@ public class ProcessEvent extends SimEvent {
 	}
 
 	public void handleEvent(SimLogger theLogger) {
-		this.getOwner().radiateCleanup(1);
+		//NO EVENT SPECIFIC TASKS
 	}
 	
 	public SimEvent repopulate(){
