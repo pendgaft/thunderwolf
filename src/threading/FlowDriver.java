@@ -1,5 +1,7 @@
 package threading;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.concurrent.*;
 
@@ -22,10 +24,11 @@ public class FlowDriver implements Runnable {
 
 	private SimLogger logMaster;
 
-	private static final int NUMBER_OF_THREADS = 1;
+	private static int NUMBER_OF_THREADS = 1;
 	private static final double MAX_SIM_TIME = 120000.0;
 	private static final boolean DEBUG_TABLES = true;
 	private static final boolean DEBUG_EVENTS = false;
+	private static final boolean MULTI_THREADING = true;
 
 	private static final long REPORTING_WINDOW = 600000;
 
@@ -36,6 +39,20 @@ public class FlowDriver implements Runnable {
 	public static final int WORK_SIM_END = 2;
 
 	public FlowDriver(HashMap<Integer, BGPSpeaker> routingTopology, SimLogger logs) {
+		try {
+			if (InetAddress.getLocalHost().getHostName().equals("minerva.cs.umn.edu")) {
+				FlowDriver.NUMBER_OF_THREADS = 10;
+			} else {
+				if(FlowDriver.MULTI_THREADING){
+					FlowDriver.NUMBER_OF_THREADS = 4;
+				}
+			}
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+			System.exit(-1);
+		}
+		System.out.println("Building flow driver with " + FlowDriver.NUMBER_OF_THREADS + " theads.");
+
 		this.topo = routingTopology;
 		this.eventQueue = new PriorityBlockingQueue<SimEvent>();
 		this.timeToMoveTo = 0.0;
@@ -115,16 +132,10 @@ public class FlowDriver implements Runnable {
 			}
 			this.timeToMoveTo = nextEvent.getEventTime();
 			this.runForwardSem.release(FlowDriver.NUMBER_OF_THREADS);
+			this.blockOnChildren();
 
-			/*
-			 * Wait until the children are done
-			 */
-			try {
-				this.blockOnChildSem.acquire(FlowDriver.NUMBER_OF_THREADS);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-				System.exit(-2);
-			}
+			this.scanQueueSem.release(FlowDriver.NUMBER_OF_THREADS);
+			this.blockOnChildren();
 
 			/*
 			 * Deal with any special event activity, and then repopoulate the
@@ -132,25 +143,10 @@ public class FlowDriver implements Runnable {
 			 */
 			nextEvent.handleEvent(this.logMaster);
 			this.eventQueue.put(nextEvent.repopulate());
-
-			/*
-			 * Again, release the children, wait till they are done..
-			 */
-			this.eventUpdateSem.release(FlowDriver.NUMBER_OF_THREADS);
-			try {
-				this.blockOnChildSem.acquire(FlowDriver.NUMBER_OF_THREADS);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-				System.exit(-2);
-			}
+			this.blockOnChildren();
 
 			this.processUpdateSem.release(FlowDriver.NUMBER_OF_THREADS);
-			try {
-				this.blockOnChildSem.acquire(FlowDriver.NUMBER_OF_THREADS);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-				System.exit(-2);
-			}
+			this.blockOnChildren();
 		}
 
 		/*
@@ -174,6 +170,15 @@ public class FlowDriver implements Runnable {
 			return this.workSimFinished();
 		} else {
 			throw new RuntimeException("Bad simulation end mode given: " + FlowDriver.SIM_END_MODE);
+		}
+	}
+
+	private void blockOnChildren() {
+		try {
+			this.blockOnChildSem.acquire(FlowDriver.NUMBER_OF_THREADS);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			System.exit(-2);
 		}
 	}
 
