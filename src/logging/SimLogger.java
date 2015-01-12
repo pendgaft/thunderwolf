@@ -184,6 +184,7 @@ public class SimLogger {
 	}
 
 	private String timeFormatter(double timeVal) {
+		double orig = timeVal;
 		String timeStr = "seconds";
 		if (timeVal > 60.0) {
 			timeVal = timeVal / 60.0;
@@ -197,6 +198,9 @@ public class SimLogger {
 			timeVal = timeVal / 24.0;
 			timeStr = "days";
 		}
+		System.out.println("formating " + orig);
+		System.out.println(timeVal + " " + timeStr);
+		
 		return timeVal + " " + timeStr;
 	}
 

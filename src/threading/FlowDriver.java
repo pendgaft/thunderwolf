@@ -30,7 +30,7 @@ public class FlowDriver implements Runnable {
 	private static final boolean DEBUG_EVENTS = false;
 	private static final boolean MULTI_THREADING = true;
 
-	private static final long REPORTING_WINDOW = 600000;
+	private static final long REPORTING_WINDOW = 60000;
 
 	//XXX consider saner way to pass this in
 	public static int SIM_END_MODE = FlowDriver.WORK_SIM_END;
@@ -106,8 +106,9 @@ public class FlowDriver implements Runnable {
 		while (!this.simFinished()) {
 			long currentTime = System.currentTimeMillis();
 			if (currentTime - lastReport >= FlowDriver.REPORTING_WINDOW) {
+				long timeRan = currentTime - lastReport;
 				lastReport = currentTime;
-				this.logMaster.printToConsole(lastReport);
+				this.logMaster.printToConsole(timeRan);
 			}
 
 			SimEvent nextEvent = this.eventQueue.poll();
