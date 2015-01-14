@@ -20,8 +20,8 @@ public class ASTopoParser {
 	private HashMap<Integer, AS> unprunedTopo;
 	private HashMap<Integer, AS> prunedTopo;
 	private boolean hardFail;
-	
-	public static void main(String args[]) throws IOException{
+
+	public static void main(String args[]) throws IOException {
 		ASTopoParser test = new ASTopoParser("whole-internet-rel.txt", "whole-internet-ip.txt", true);
 		HashMap<Integer, BGPSpeaker> resultOfBuild = test.doNetworkBuild(true);
 		System.out.println("size: " + resultOfBuild.size());
@@ -56,8 +56,8 @@ public class ASTopoParser {
 		 */
 		if (singlePassPrune) {
 			this.prunedTopo = this.doNetworkPrune();
-		} else{
-			this.prunedTopo =this.unprunedTopo;
+		} else {
+			this.prunedTopo = this.unprunedTopo;
 		}
 		System.out.println("pruned size: " + this.prunedTopo.size());
 
@@ -71,7 +71,7 @@ public class ASTopoParser {
 			double jitter;
 			double mraiValue = 0;
 			while (mraiValue == 0) {
-				jitter = rng.nextDouble() * (30.0 * SimEvent.SECOND_MULTIPLIER); 
+				jitter = rng.nextDouble() * (30.0 * SimEvent.SECOND_MULTIPLIER);
 				mraiValue = 30.0 * SimEvent.SECOND_MULTIPLIER + jitter;
 				/*
 				 * Odds of a collision are stupid low, but be cautious
@@ -83,7 +83,7 @@ public class ASTopoParser {
 			mraiUnique.add(mraiValue);
 			routerMap.put(tAS.getASN(), new BGPSpeaker(tAS, routerMap, mraiValue));
 		}
-		for(BGPSpeaker tSpeaker: routerMap.values()){
+		for (BGPSpeaker tSpeaker : routerMap.values()) {
 			tSpeaker.setupSharedQueues();
 		}
 
@@ -116,7 +116,7 @@ public class ASTopoParser {
 		/*
 		 * Parse the cidr count file and use it to create the AS objects
 		 */
-		//TODO looks like the CIDR count is no longer used as we hand out networks in a slightly more complicated/interesting way
+		//TODO make this work with new format...
 		if (cidrCountFile != null) {
 			fBuff = new BufferedReader(new FileReader(cidrCountFile));
 			while (fBuff.ready()) {
@@ -176,8 +176,9 @@ public class ASTopoParser {
 			rel = Integer.parseInt(pollToks.nextToken());
 
 			/*
-			 * Actually add the relation, we only need to call this for one
-			 * object and it handles symmetry enforcement
+			 * Check if the AS object was not created in the process of parsing
+			 * the CIDR count file, if not, add the AS and give it a single
+			 * network
 			 */
 			if (!retMap.containsKey(lhsASN)) {
 				retMap.put(lhsASN, new AS(lhsASN, 1));
@@ -187,6 +188,11 @@ public class ASTopoParser {
 				retMap.put(rhsASN, new AS(rhsASN, 1));
 				noCIDRCount++;
 			}
+
+			/*
+			 * Actually add the relation, we only need to call this for one
+			 * object and it handles symmetry enforcement
+			 */
 			retMap.get(lhsASN).addParsedRelation(retMap.get(rhsASN), rel);
 		}
 		fBuff.close();
@@ -234,6 +240,10 @@ public class ASTopoParser {
 			}
 			for (Integer custASN : oldAS.getCustomers()) {
 				if (!prunedMap.containsKey(custASN)) {
+					/*
+					 * If the AS has been pruned, roll the CIDRs up to the parent
+					 */
+					newAS.setCIDRSize(newAS.getCIDRSize() + this.unprunedTopo.get(custASN).getCIDRSize());
 					continue;
 				}
 				newAS.addCustomer(prunedMap.get(custASN));

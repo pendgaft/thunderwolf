@@ -2,40 +2,35 @@ package topoCreating;
 
 import java.util.*;
 import java.io.*;
+import java.util.regex.*;
 
 import router.*;
 
 public class FullInternetBuild {
 
-	private static final String BASE_AS_REL_FILE = "/scratch/waterhouse/schuch/asData/current-as-rel";
-	private static final String BASE_IP_FILE = "/scratch/waterhouse/schuch/asData/current-ip-count";
+	//private static final String BASE_AS_REL_FILE = "/scratch/waterhouse/schuch/asData/current-as-rel";
+	private static final String BASE_AS_REL_FILE = "20150101.as-rel.txt";
+	//private static final String BASE_IP_FILE = "/scratch/waterhouse/schuch/asData/current-ip-count";
+	private static final String BASE_IP_FILE = "20150101-ip.txt";
 	private static final String OUT_FILE = "pruned-weighted-internet";
 
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) throws IOException {
-
-		ASTopoParser topParse = new ASTopoParser(FullInternetBuild.BASE_AS_REL_FILE, null, false);
+	
+		ASTopoParser topParse = new ASTopoParser(FullInternetBuild.BASE_AS_REL_FILE, FullInternetBuild.BASE_IP_FILE, false);
 		HashMap<Integer, BGPSpeaker> startingMap = topParse.doNetworkBuild(true);
 		System.out.println("original parse: " + topParse.getUnpruned().size());
 		System.out.println("pruned size: " + startingMap.keySet().size());
-		HashMap<Integer, AS> adjusted = FullInternetBuild.incorpIPCount(BASE_IP_FILE, topParse.getUnpruned(),
-				startingMap);
-		System.out.println("Adjusted size: " + adjusted.size());
-		int sum = 0;
-		for(AS tAS: adjusted.values()){
-			sum += tAS.getCIDRSize();
-		}
-		System.out.println("total ip count: " + sum);
 
-		//HashMap<Integer, AS> asMap = new HashMap<Integer, AS>();
-		//for(int tASN: startingMap.keySet()){
-		//	asMap.put(tASN, startingMap.get(tASN).getASObject());
-		//}
+		HashMap<Integer, AS> asMap = new HashMap<Integer, AS>();
+		for(int tASN: startingMap.keySet()){
+			asMap.put(tASN, startingMap.get(tASN).getASObject());
+		}
 		//HashMap<Integer, AS> prunedMap = FullInternetBuild.pruneTopo(asMap);
 		//HashMap<Integer, AS> secondPruneMap = FullInternetBuild.pruneTopo(prunedMap);
-		FullInternetBuild.dumpToFile(adjusted);
+		FullInternetBuild.dumpToFile(asMap);
 	}
 
 	private static void dumpToFile(HashMap<Integer, AS> asMap) throws IOException {
@@ -80,7 +75,7 @@ public class FullInternetBuild {
 				continue;
 			}
 
-			StringTokenizer tokens = new StringTokenizer(line, ",");
+			StringTokenizer tokens = new StringTokenizer(line, " ");
 			int asn = Integer.parseInt(tokens.nextToken());
 			int ipCount = Integer.parseInt(tokens.nextToken());
 
@@ -132,17 +127,67 @@ public class FullInternetBuild {
 			tAS.setCIDRSize(retMap.get(tASN).getCIDRSize());
 			finalPrunedMap.put(tASN, tAS);
 		}
-		for(int tASN: retMap.keySet()){
-			if(finalPrunedMap.containsKey(tASN)){
+		for (int tASN : retMap.keySet()) {
+			if (finalPrunedMap.containsKey(tASN)) {
 				continue;
 			}
-			
+
 			AS tAS = retMap.get(tASN);
-			for(int tProv: tAS.getProviders()){
+			for (int tProv : tAS.getProviders()) {
 				finalPrunedMap.get(tProv).setCIDRSize(finalPrunedMap.get(tProv).getCIDRSize() + tAS.getCIDRSize());
 			}
 		}
 
 		return finalPrunedMap;
+	}
+
+	public static void convertNewIPFileToCountFile(String inFileName, String outFileName) throws IOException {
+		HashMap<Integer, Integer> sizeMapping = new HashMap<Integer, Integer>();
+		Pattern newFormatPattern = Pattern.compile("\\S+\\s+\\S+\\s+(\\S+)");
+		
+		BufferedReader newFormatBuff = new BufferedReader(new FileReader(inFileName));
+		int failedMatch = 0;
+		int coalitionMatch = 0;
+		int longASCount = 0;
+		while(newFormatBuff.ready()){
+			Matcher lineMatch = newFormatPattern.matcher(newFormatBuff.readLine());
+			if(!lineMatch.find()){
+				failedMatch++;
+				continue;
+			}
+			
+			if(lineMatch.group(1).contains("_") || lineMatch.group(1).contains(",")){
+				coalitionMatch++;
+				continue;
+			}
+			if(Long.parseLong(lineMatch.group(1)) > (long)Integer.MAX_VALUE){
+				longASCount++;
+				continue;
+			}
+			Integer asn = Integer.parseInt(lineMatch.group(1));
+			if(!sizeMapping.containsKey(asn)){
+				sizeMapping.put(asn, 0);
+			}
+			sizeMapping.put(asn, sizeMapping.get(asn) + 1);
+		}
+		newFormatBuff.close();
+		System.out.println("failed count: " + failedMatch);
+		System.out.println("coalition count: " + coalitionMatch);
+		System.out.println("8 byte asn count: " + longASCount);
+		
+		BufferedWriter outBuff = new BufferedWriter(new FileWriter(outFileName));
+		for(Integer asn: sizeMapping.keySet()){
+			outBuff.write("" + asn + " " + sizeMapping.get(asn) + "\n");
+		}
+		outBuff.close();
+		
+		int totalDFZSize = 0;
+		int maxSize = 0;
+		for(int size: sizeMapping.values()){
+			totalDFZSize += size;
+			maxSize = Math.max(maxSize, size);
+		}
+		System.out.println("total size: " + totalDFZSize);
+		System.out.println("max as size: " + maxSize);
 	}
 }
