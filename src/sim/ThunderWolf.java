@@ -75,9 +75,9 @@ public class ThunderWolf {
 		if (myMode == Mode.REAL) {
 			//XXX currently the real file is pruned
 			//this.routerMap = topoParse.doNetworkBuild(true);
-			this.routerMap = topoParse.doNetworkBuild(false);
+			this.routerMap = topoParse.doNetworkBuild(0);
 		} else {
-			this.routerMap = topoParse.doNetworkBuild(false);
+			this.routerMap = topoParse.doNetworkBuild(0);
 		}
 		end = System.currentTimeMillis();
 		System.out.println("Topology created in: " + (end - start) / 1000 + " seconds.\n");

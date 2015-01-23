@@ -20,7 +20,7 @@ public class FullInternetBuild {
 	public static void main(String[] args) throws IOException {
 	
 		ASTopoParser topParse = new ASTopoParser(FullInternetBuild.BASE_AS_REL_FILE, FullInternetBuild.BASE_IP_FILE, false);
-		HashMap<Integer, BGPSpeaker> startingMap = topParse.doNetworkBuild(true);
+		HashMap<Integer, BGPSpeaker> startingMap = topParse.doNetworkBuild(2);
 		System.out.println("original parse: " + topParse.getUnpruned().size());
 		System.out.println("pruned size: " + startingMap.keySet().size());
 

@@ -23,7 +23,7 @@ public class ASTopoParser {
 
 	public static void main(String args[]) throws IOException {
 		ASTopoParser test = new ASTopoParser("whole-internet-rel.txt", "whole-internet-ip.txt", true);
-		HashMap<Integer, BGPSpeaker> resultOfBuild = test.doNetworkBuild(true);
+		HashMap<Integer, BGPSpeaker> resultOfBuild = test.doNetworkBuild(1);
 		System.out.println("size: " + resultOfBuild.size());
 	}
 
@@ -47,17 +47,16 @@ public class ASTopoParser {
 	 *             - if there is an error reading either the relationship or
 	 *             cidr file
 	 */
-	public HashMap<Integer, BGPSpeaker> doNetworkBuild(boolean singlePassPrune) throws IOException {
+	public HashMap<Integer, BGPSpeaker> doNetworkBuild(int numberOfPrunes) throws IOException {
 		this.unprunedTopo = this.parseFile(this.asRelFileName, this.ipCountFileName);
 		System.out.println("unpruned size: " + this.unprunedTopo.size());
 
 		/*
 		 * If we are suppose to do a prune of the ASes do it here please
 		 */
-		if (singlePassPrune) {
+		this.prunedTopo = this.unprunedTopo;
+		for(int counter = 0; counter < numberOfPrunes; counter++){
 			this.prunedTopo = this.doNetworkPrune();
-		} else {
-			this.prunedTopo = this.unprunedTopo;
 		}
 		System.out.println("pruned size: " + this.prunedTopo.size());
 
@@ -206,7 +205,7 @@ public class ASTopoParser {
 		HashMap<Integer, AS> prunedMap = new HashMap<Integer, AS>();
 
 		int counter = 0;
-		for (AS tAS : this.unprunedTopo.values()) {
+		for (AS tAS : this.prunedTopo.values()) {
 			if (tAS.getCustomers().size() > 0) {
 				counter++;
 				prunedMap.put(tAS.getASN(), new AS(tAS.getASN(), tAS.getCIDRSize()));
@@ -218,7 +217,7 @@ public class ASTopoParser {
 		 * Build the relations for the deep copy objects
 		 */
 		for (AS newAS : prunedMap.values()) {
-			AS oldAS = this.unprunedTopo.get(newAS.getASN());
+			AS oldAS = this.prunedTopo.get(newAS.getASN());
 
 			/*
 			 * Populate providers, this will all exist by default since they
@@ -243,7 +242,7 @@ public class ASTopoParser {
 					/*
 					 * If the AS has been pruned, roll the CIDRs up to the parent
 					 */
-					newAS.setCIDRSize(newAS.getCIDRSize() + this.unprunedTopo.get(custASN).getCIDRSize());
+					newAS.setCIDRSize(newAS.getCIDRSize() + this.prunedTopo.get(custASN).getCIDRSize());
 					continue;
 				}
 				newAS.addCustomer(prunedMap.get(custASN));
