@@ -8,10 +8,12 @@ import events.SimEvent;
 import router.BGPSpeaker;
 import util.Stats;
 
+//TODO hit this with the multi-thread stick...
 public class SimLogger {
 
 	private BufferedWriter memOut;
 	private BufferedWriter tableSizeOut;
+	private BufferedWriter workTodoOut;
 
 	private List<Integer> orderedASNList;
 	private HashMap<Integer, BGPSpeaker> topology;
@@ -22,10 +24,12 @@ public class SimLogger {
 	private static final String LOG_DIR = "logs/";
 	private static final String MEM_STUB = "-mem.csv";
 	private static final String TABLE_STUB = "-table.csv";
+	private static final String WORKTODO_STUB = "-workQueue.csv";
 
 	public SimLogger(String fileBase, HashMap<Integer, BGPSpeaker> topo) throws IOException {
 		this.memOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.MEM_STUB));
 		this.tableSizeOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.TABLE_STUB));
+		this.workTodoOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.WORKTODO_STUB));
 
 		this.topology = topo;
 		this.orderedASNList = this.buildOrderedASNList(topo);
@@ -51,8 +55,9 @@ public class SimLogger {
 	 *             - if there is an error from internal functions doing setup
 	 */
 	public void setupStatPush() throws IOException {
-		this.setupLoggingHeader(memOut);
+		this.setupLoggingHeader(this.memOut);
 		this.setupLoggingHeader(this.tableSizeOut);
+		this.setupLoggingHeader(this.workTodoOut);
 	}
 
 	/**
@@ -68,6 +73,7 @@ public class SimLogger {
 
 		HashMap<Integer, Double> memMap = new HashMap<Integer, Double>();
 		HashMap<Integer, Double> tableSize = new HashMap<Integer, Double>();
+		HashMap<Integer, Double> queueSize = new HashMap<Integer, Double>();
 
 		/*
 		 * Fetch all of the memory loads and table sizes
@@ -76,6 +82,7 @@ public class SimLogger {
 		for (int tASN : this.topology.keySet()) {
 			memMap.put(tASN, (double) this.topology.get(tASN).memLoad());
 			tableSize.put(tASN, (double) this.topology.get(tASN).calcTotalRouteCount());
+			queueSize.put(tASN, (double) this.topology.get(tASN).getWorkRemaining());
 		}
 
 		/*
@@ -84,6 +91,7 @@ public class SimLogger {
 		 */
 		this.writeToLog(memMap, this.nextLoggingHorizon, this.memOut, 1000000.0);
 		this.writeToLog(tableSize, this.nextLoggingHorizon, this.tableSizeOut, 1000.0);
+		this.writeToLog(queueSize, this.nextLoggingHorizon, this.workTodoOut, 1000.0);
 
 		/*
 		 * Spit some stuff to the console
@@ -107,6 +115,7 @@ public class SimLogger {
 	public void doneLogging() throws IOException {
 		this.memOut.close();
 		this.tableSizeOut.close();
+		this.workTodoOut.close();
 	}
 
 	/**
