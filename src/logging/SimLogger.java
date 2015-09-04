@@ -27,9 +27,9 @@ public class SimLogger {
 
 	public SimLogger(String fileBase, HashMap<Integer, BGPSpeaker> topo) throws IOException {
 		this.logDir = fileBase;
-		this.memOut = new BufferedWriter(new FileWriter(this.logDir + SimLogger.MEM_STUB));
-		this.tableSizeOut = new BufferedWriter(new FileWriter(this.logDir + SimLogger.TABLE_STUB));
-		this.workTodoOut = new BufferedWriter(new FileWriter(this.logDir + SimLogger.WORKTODO_STUB));
+		this.memOut = new BufferedWriter(new FileWriter(this.logDir + File.separator + SimLogger.MEM_STUB));
+		this.tableSizeOut = new BufferedWriter(new FileWriter(this.logDir + File.separator + SimLogger.TABLE_STUB));
+		this.workTodoOut = new BufferedWriter(new FileWriter(this.logDir + File.separator + SimLogger.WORKTODO_STUB));
 
 		this.topology = topo;
 		this.orderedASNList = this.buildOrderedASNList(topo);
