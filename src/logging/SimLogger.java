@@ -3,14 +3,14 @@ package logging;
 import java.io.*;
 import java.util.*;
 
-import events.SimEvent;
-
 import router.BGPSpeaker;
 import util.Stats;
 
 //TODO hit this with the multi-thread stick...
 public class SimLogger {
 
+	private String logDir = null;
+	
 	private BufferedWriter memOut;
 	private BufferedWriter tableSizeOut;
 	private BufferedWriter workTodoOut;
@@ -21,15 +21,15 @@ public class SimLogger {
 	private double nextLoggingHorizon;
 	public static final double LOG_EPOCH = events.SimEvent.SECOND_MULTIPLIER * 30;
 
-	private static final String LOG_DIR = "logs/";
-	private static final String MEM_STUB = "-mem.csv";
-	private static final String TABLE_STUB = "-table.csv";
-	private static final String WORKTODO_STUB = "-workQueue.csv";
+	private static final String MEM_STUB = "mem.csv";
+	private static final String TABLE_STUB = "ribSize.csv";
+	private static final String WORKTODO_STUB = "workQueue.csv";
 
 	public SimLogger(String fileBase, HashMap<Integer, BGPSpeaker> topo) throws IOException {
-		this.memOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.MEM_STUB));
-		this.tableSizeOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.TABLE_STUB));
-		this.workTodoOut = new BufferedWriter(new FileWriter(SimLogger.LOG_DIR + fileBase + SimLogger.WORKTODO_STUB));
+		this.logDir = fileBase;
+		this.memOut = new BufferedWriter(new FileWriter(this.logDir + SimLogger.MEM_STUB));
+		this.tableSizeOut = new BufferedWriter(new FileWriter(this.logDir + SimLogger.TABLE_STUB));
+		this.workTodoOut = new BufferedWriter(new FileWriter(this.logDir + SimLogger.WORKTODO_STUB));
 
 		this.topology = topo;
 		this.orderedASNList = this.buildOrderedASNList(topo);
